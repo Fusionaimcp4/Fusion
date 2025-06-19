@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-mono: ui-monospace, Menlo, Monaco, 'Cascadia Mono', 'Segoe UI Mono',
+    'Roboto Mono', 'Oxygen Mono', 'Ubuntu Monospace', 'Source Code Pro',
+    'Fira Mono', 'Droid Sans Mono', 'Courier New', monospace;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 
+    'Helvetica Neue', Arial, sans-serif;
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 255, 255, 255;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    height: 100%;
+  }
+
+  body {
+    @apply antialiased bg-white;
+    color: rgb(var(--foreground-rgb));
+    background: rgb(var(--background-rgb));
+    height: 100%;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-light tracking-tight;
+  }
+  
+  h1 {
+    @apply text-4xl md:text-5xl lg:text-6xl;
+  }
+  
+  h2 {
+    @apply text-3xl md:text-4xl;
+  }
+  
+  h3 {
+    @apply text-2xl md:text-3xl;
+  }
+}
+
+@layer components {
+  .container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  /* Add utility for safe area insets */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* Chat Interface Styles */
+.sidebar-icon {
+  @apply p-3 rounded-md mb-2 transition-colors duration-200 text-gray-500;
+}
+
+.sidebar-icon:hover {
+  @apply bg-gray-100 text-gray-900;
+}
+
+.sidebar-icon.active {
+  @apply bg-blue-50 text-blue-500;
+}
+
+.feature-button {
+  @apply inline-flex items-center px-3 py-1 rounded-full border border-gray-200 text-sm mr-2 cursor-pointer transition-colors duration-200 whitespace-nowrap;
+}
+
+.feature-button:hover {
+  @apply bg-gray-50;
+}
+
+/* Custom scrollbar */
+.feature-buttons-container::-webkit-scrollbar {
+  height: 4px;
+}
+
+.feature-buttons-container::-webkit-scrollbar-thumb {
+  @apply bg-gray-200 rounded;
+}
+
+.feature-buttons-container {
+  scrollbar-width: thin;
+  scrollbar-color: theme('colors.gray.200') transparent;
+}
+
+/* Message styles */
+.message-wrapper {
+  @apply mb-4;
+}
+
+.message-wrapper.user {
+  @apply flex justify-end;
+}
+
+.message-wrapper.assistant {
+  @apply flex justify-start;
+}
+
+.message-content {
+  @apply max-w-[70%] rounded-lg p-3;
+}
+
+.message-content.user {
+  @apply bg-black text-white;
+}
+
+.message-content.assistant {
+  @apply bg-neutral-100 text-black;
+}
+
+/* Token usage bar */
+.token-usage-container {
+  @apply sticky bottom-0 bg-white py-2 border-t border-gray-200 z-10;
+}
+
+.input-wrapper {
+  @apply sticky bottom-0 bg-gray-100 pt-2 z-10;
+}
+
+/* Ensure body takes full height and hides overflow */
+html, body {
+  overscroll-behavior-y: none; /* Prevents pull-to-refresh on mobile */
+}
+.textarea-placeholder-sm::placeholder {
+  font-size: 0.875rem; /* Equivalent to Tailwind's text-sm */
+}

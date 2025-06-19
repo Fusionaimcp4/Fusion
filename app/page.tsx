@@ -201,7 +201,7 @@ export default function Home() {
               A Peek <span className="font-normal text-orange-600">Under the Hood</span>
             </h2>
             <p className="font-mono text-[13px] tracking-wider leading-relaxed max-w-xl mx-auto mb-12 text-neutral-600">
-            Fusion AI delivers AI-powered chat and automation tools using top-tier models like OpenAI, Claude, and Gemini. Our system ensures optimal cost and performance with detailed analytics, credit tracking, and enterprise-ready APIs.
+            Fusion AI delivers AI-powered chat and automation tools using top-tier models. Our system ensures optimal cost and performance with detailed analytics, credit tracking, and enterprise-ready APIs.
             </p>
             <p className="font-mono text-[13px] tracking-wider leading-relaxed max-w-xl mx-auto mb-12 text-neutral-600">
               Our NeuroSwitch™ query classification happens <strong className="font-normal">locally</strong> using a fine-tuned model based on <code className="font-mono text-sm bg-neutral-200 text-neutral-700 px-1.5 py-0.5 rounded">smart zero-shot classifier/bart-large-mnli</code>. This means your prompts for routing are not sent to external servers for classification, ensuring privacy.

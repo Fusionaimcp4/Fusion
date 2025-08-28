@@ -161,22 +161,32 @@ const ChatSidebar: React.FC<ChatSidebarProps> = React.forwardRef<HTMLDivElement,
                     <div className="flex items-center flex-1 mr-2 min-w-0"> {/* Container for icon and name */}
                         {/* Provider Icon */}
                         {room.provider && (
-                          <img
-                            src={`/${room.provider.toLowerCase().replace(/\s+/g, '-')}.png`}
-                            alt={`${room.provider} icon`}
-                            className="w-5 h-5 mr-1.5 flex-shrink-0"
-                            onError={(e) => {
-                              // Attempt to load neuro-switch.png if neuroswitch fails (common variation)
-                              const target = e.currentTarget as HTMLImageElement;
-                              if (room.provider?.toLowerCase() === 'neuroswitch') {
-                                target.src = '/neuro-switch.png';
-                                // Ensure onError isn't called again for this specific fallback
-                                target.onerror = null;
-                              } else {
-                                target.style.display = 'none';
-                              }
-                            }}
-                          />
+                          (() => {
+                            // Extract provider name, handling cases like "openai/gpt-4o" -> "openai"
+                            let providerName = room.provider.toLowerCase().replace(/\s+/g, '-');
+                            if (providerName.includes('/')) {
+                              providerName = providerName.split('/')[0];
+                            }
+                            
+                            return (
+                              <img
+                                src={`/${providerName}.png`}
+                                alt={`${providerName} icon`}
+                                className="w-5 h-5 mr-1.5 flex-shrink-0"
+                                onError={(e) => {
+                                  // Attempt to load neuro-switch.png if neuroswitch fails (common variation)
+                                  const target = e.currentTarget as HTMLImageElement;
+                                  if (providerName === 'neuroswitch') {
+                                    target.src = '/neuro-switch.png';
+                                    // Ensure onError isn't called again for this specific fallback
+                                    target.onerror = null;
+                                  } else {
+                                    target.style.display = 'none';
+                                  }
+                                }}
+                              />
+                            );
+                          })()
                         )}
                         <span className="truncate">{room.name || `Chat ${room.id.substring(0, 4)}`}</span>
                     </div>

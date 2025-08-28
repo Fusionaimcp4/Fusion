@@ -910,7 +910,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <div key={messageKey} className="flex items-start gap-3 mb-4 justify-start px-2">
             <div className="flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-full bg-gray-100 flex items-center justify-center text-white text-sm overflow-hidden">
               {(() => {
-                const providerName = msg.provider?.toLowerCase().replace(/\s+/g, '-') || 'default';
+                // Extract provider from msg.provider, ensuring we get just the provider name
+                let providerName = msg.provider?.toLowerCase().replace(/\s+/g, '-') || 'default';
+                
+                // If provider contains a slash, extract just the provider part (e.g., "openai/gpt-4o" -> "openai")
+                if (providerName.includes('/')) {
+                  providerName = providerName.split('/')[0];
+                }
+                
+                console.log('ChatWindow: Using provider icon for:', providerName); // Debug log
+                
                 if (providerName === 'openai') return <img src="/openai.png" alt="OpenAI" className="w-full h-full object-contain" />;
                 if (providerName === 'claude') return <img src="/claude.png" alt="Claude" className="w-full h-full object-contain" />;
                 if (providerName === 'gemini') return <img src="/gemini.png" alt="Gemini" className="w-full h-full object-contain" />;

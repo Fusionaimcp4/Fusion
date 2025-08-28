@@ -26,6 +26,8 @@ export default function AdminSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   // const API_BASE_URL = '/api'; // Handled by apiClient
 
@@ -102,6 +104,30 @@ export default function AdminSettingsPage() {
         setSuccessMessage(null);
         setError(null);
       }, 5000);
+    }
+  };
+
+  const handleSyncModels = async () => {
+    setIsSyncing(true);
+    setSyncMessage(null);
+    setError(null);
+    try {
+      const response = await apiClient.post('/admin/models/sync', { action: 'sync' });
+      const { stats } = response.data as { stats: { created: number; updated: number; errors: number } };
+      setSyncMessage(
+        `Models synced successfully! Created: ${stats.created}, Updated: ${stats.updated}, Errors: ${stats.errors}`
+      );
+      setTimeout(() => {
+        setSyncMessage(null);
+      }, 10000);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to sync models.';
+      setError(errorMessage);
+      setTimeout(() => {
+        setError(null);
+      }, 5000);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -185,6 +211,43 @@ export default function AdminSettingsPage() {
           </p>
            <div className="bg-gray-50 p-6 rounded-lg shadow-sm">
             {renderConfigInputs(pricingConfigs, 'pricing')}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-medium text-gray-700 mb-3">Model Management</h2>
+          <p className="text-gray-600 mb-4">
+            Sync platform models from OpenRouter cache to update pricing and add new models.
+          </p>
+          <div className="bg-gray-50 p-6 rounded-lg shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Platform Models Sync</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Synchronize model data from the OpenRouter cache file. New models will be added as inactive.
+                </p>
+              </div>
+              <button
+                onClick={handleSyncModels}
+                disabled={isSyncing}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSyncing ? (
+                  <>
+                    <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    Syncing...
+                  </>
+                ) : (
+                  'Sync Models'
+                )}
+              </button>
+            </div>
+            
+            {syncMessage && (
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                <p className="text-sm text-green-700">{syncMessage}</p>
+              </div>
+            )}
           </div>
         </section>
 

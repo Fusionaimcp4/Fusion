@@ -57,8 +57,16 @@ const ChatLayout: React.FC<ChatLayoutProps> = () => {
     }
     return 'neuroswitch'; // Default overall
   };
-  const [selectedModel, setSelectedModel] = useState<string>(getDefaultModel());
+  const [selectedModel, setSelectedModel] = useState<string>('neuroswitch'); // Always start with default to avoid hydration mismatch
   const [neuroStatus, setNeuroStatus] = useState<'green' | 'orange' | ''>( '' );
+
+  // Load saved model after hydration to avoid mismatch
+  useEffect(() => {
+    const savedModel = getDefaultModel();
+    if (savedModel !== selectedModel) {
+      setSelectedModel(savedModel);
+    }
+  }, []);
 
   // New state for model selection dropdown
   const [allModels, setAllModels] = useState<AiModel[]>([]);

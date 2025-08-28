@@ -13,6 +13,11 @@ interface SaveChatRequestBody {
   assistant_message_content: string;
   assistant_message_actual_provider: string;
   assistant_message_actual_model_used: string | null;
+  // New file/image fields
+  image_url?: string;
+  file_url?: string;
+  file_name?: string;
+  mime_type?: string;
 }
 
 // POST /api/chats - Create a new chat or add messages to an existing one
@@ -24,7 +29,11 @@ router.post('/', verifyToken, async (req: Request, res: Response) => {
     user_message_content,
     assistant_message_content,
     assistant_message_actual_provider,
-    assistant_message_actual_model_used
+    assistant_message_actual_model_used,
+    image_url,
+    file_url,
+    file_name,
+    mime_type
   } = req.body as SaveChatRequestBody;
 
   const userId = (req.user as { id: number }).id;
@@ -85,15 +94,19 @@ router.post('/', verifyToken, async (req: Request, res: Response) => {
     await client.query(userMessageQuery, [currentChatId, 'user', user_message_content]);
 
     const assistantMessageQuery = `
-      INSERT INTO messages (chat_id, role, content, provider, model_used, timestamp)
-      VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id;
+      INSERT INTO messages (chat_id, role, content, provider, model_used, image_url, file_url, file_name, mime_type, timestamp)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id;
     `;
     await client.query(assistantMessageQuery, [
       currentChatId,
       'assistant',
       assistant_message_content,
       assistant_message_actual_provider,
-      assistant_message_actual_model_used
+      assistant_message_actual_model_used,
+      image_url || null,
+      file_url || null,
+      file_name || null,
+      mime_type || null
     ]);
 
     await client.query('COMMIT');
@@ -167,7 +180,7 @@ router.get('/:chatId', verifyToken, async (req: Request, res: Response) => {
 
     // Then, get all messages for this chat
     const messagesQuery = `
-      SELECT id, chat_id, role, content, provider, model_used, timestamp
+      SELECT id, chat_id, role, content, provider, model_used, image_url, file_url, file_name, mime_type, timestamp
       FROM messages
       WHERE chat_id = $1
       ORDER BY timestamp ASC;

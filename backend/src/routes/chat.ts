@@ -4,6 +4,7 @@ import { verifyToken, User as AuthUser } from '../middleware/auth';
 import pool from '../db';
 import { calculateLlmProviderCost, getNeuroSwitchClassifierFee } from '../utils/costCalculator';
 import { decrypt } from '../utils/crypto';
+import { uploadBase64Image, uploadFileContent, validateSpacesConfig } from '../utils/storageUploader';
 
 interface NeuroSwitchResponse {
   response: string;
@@ -22,6 +23,11 @@ interface NeuroSwitchResponse {
   };
   tool_name?: string;
   file_downloads?: string[];
+  // New file/image support fields
+  image_url?: string;
+  image_base64?: string;
+  generated_file_content?: string;
+  generated_file_name?: string;
 }
 
 const router = express.Router();
@@ -690,6 +696,62 @@ if (chatIdFromHeader) { // Removed isProd condition
       neuroSwitchFeeToLog // Log the original NeuroSwitch fee, regardless of allowance
     );
 
+    // --- File/Image Processing ---
+    let processedImageUrl: string | null = null;
+    let processedFileUrl: string | null = null;
+    let processedFileName: string | null = null;
+    let processedMimeType: string | null = null;
+
+    // Validate Spaces configuration
+    if ((data.image_base64 || data.generated_file_content) && !validateSpacesConfig()) {
+      console.warn('[API Chat] DigitalOcean Spaces not configured. Skipping file upload.');
+    } else {
+      // Handle image_url (direct URL)
+      if (data.image_url) {
+        processedImageUrl = data.image_url;
+        console.log('[API Chat] Using direct image URL:', processedImageUrl);
+      }
+      
+      // Handle image_base64 (upload to Spaces)
+      if (data.image_base64) {
+        try {
+          const uploadResult = await uploadBase64Image(data.image_base64);
+          if (uploadResult.success) {
+            processedImageUrl = uploadResult.url!;
+            console.log('[API Chat] Uploaded base64 image to Spaces:', processedImageUrl);
+          } else {
+            console.error('[API Chat] Failed to upload base64 image:', uploadResult.error);
+          }
+        } catch (error: any) {
+          console.error('[API Chat] Error processing base64 image:', error.message);
+        }
+      }
+      
+      // Handle generated_file_content (upload file to Spaces)
+      if (data.generated_file_content) {
+        try {
+          const fileName = data.generated_file_name || `generated_file_${Date.now()}`;
+          const uploadResult = await uploadFileContent(
+            data.generated_file_content,
+            fileName
+          );
+          if (uploadResult.success) {
+            processedFileUrl = uploadResult.url!;
+            processedFileName = fileName;
+            // Determine MIME type from filename or content
+            const mime = require('mime-types');
+            processedMimeType = mime.lookup(fileName) || 'application/octet-stream';
+            console.log('[API Chat] Uploaded generated file to Spaces:', processedFileUrl);
+          } else {
+            console.error('[API Chat] Failed to upload generated file:', uploadResult.error);
+          }
+        } catch (error: any) {
+          console.error('[API Chat] Error processing generated file:', error.message);
+        }
+      }
+    }
+    // --- End File/Image Processing ---
+
     res.json({
       prompt,
       response: { text: data.response },
@@ -705,7 +767,12 @@ if (chatIdFromHeader) { // Removed isProd condition
       timestamp: new Date().toISOString(),
       // Add tool information if provided by NeuroSwitch
       tool_name: data.tool_name,
-      file_downloads: data.file_downloads
+      file_downloads: data.file_downloads,
+      // Add processed file/image information
+      image_url: processedImageUrl,
+      file_url: processedFileUrl,
+      file_name: processedFileName,
+      mime_type: processedMimeType
     });
 
   } catch (err: any) {

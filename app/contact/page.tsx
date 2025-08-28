@@ -221,21 +221,21 @@ export default function ContactPage() {
 
           <div className="flex justify-center space-x-6 mb-8">
             <Link 
-              href="#"
+              href="https://github.com/Fusionaimcp4/Fusion"
               className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
             >
               <Github className="w-6 h-6" />
               <span>GitHub</span>
             </Link>
             <Link 
-              href="#"
+              href="https://x.com/fusion_mcp4"
               className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
             >
               <Twitter className="w-6 h-6" />
               <span>Twitter</span>
             </Link>
             <Link 
-              href="#"
+              href="https://www.linkedin.com/company/fusion-mcp4"
               className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
             >
               <Linkedin className="w-6 h-6" />

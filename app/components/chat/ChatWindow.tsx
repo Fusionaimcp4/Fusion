@@ -56,6 +56,11 @@ interface Message {
   isLoading?: boolean; // Added for temporary loading state
   reactions?: MessageReactions; // Add reaction counts
   userReaction?: 'like' | 'dislike' | null; // User's current reaction
+  // New file/image support fields
+  image_url?: string;
+  file_url?: string;
+  file_name?: string;
+  mime_type?: string;
   // Consider adding timestamp if needed for local display sorting before saving
 }
 
@@ -90,6 +95,11 @@ interface ApiResponseData {
   };
   tool_name?: string;
   file_downloads?: any[];
+  // New file/image support fields
+  image_url?: string;
+  file_url?: string;
+  file_name?: string;
+  mime_type?: string;
 }
 
 interface AiModel {
@@ -337,6 +347,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     let responseTokensData: ApiResponseData['tokens'] | undefined = undefined;
     let messageIsError = false;
     let toolNameUsed: string | undefined = undefined;
+    // New file/image response variables
+    let responseImageUrl: string | undefined = undefined;
+    let responseFileUrl: string | undefined = undefined;
+    let responseFileName: string | undefined = undefined;
+    let responseMimeType: string | undefined = undefined;
 
     try {
       // 1. Construct payload for /api/chat (Fusion Backend)
@@ -416,6 +431,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       actualModelUsed = aiServiceData.model || aiServiceData.provider; // Use specific model, fallback to provider for display if model is null
       responseTokensData = aiServiceData.tokens;
       toolNameUsed = aiServiceData.tool_name;
+      // Capture file/image data from response
+      responseImageUrl = aiServiceData.image_url;
+      responseFileUrl = aiServiceData.file_url;
+      responseFileName = aiServiceData.file_name;
+      responseMimeType = aiServiceData.mime_type;
 
       if (toolNameUsed) {
         assistantResponseText = `${assistantResponseText}\n\n🔩 Used tool: ${toolNameUsed}`;
@@ -439,7 +459,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           user_message_content: userMessageContent,
           assistant_message_content: assistantResponseText,
           assistant_message_actual_provider: actualProvider,
-          assistant_message_actual_model_used: actualModelUsed 
+          assistant_message_actual_model_used: actualModelUsed,
+          // Include file/image data in save payload
+          image_url: responseImageUrl,
+          file_url: responseFileUrl,
+          file_name: responseFileName,
+          mime_type: responseMimeType
         };
 
         console.log('Saving to chat history:', saveHistoryPayload);
@@ -499,6 +524,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 provider: actualProvider, // Update with the actual provider from the response
                 isError: messageIsError,
                 isLoading: false, // Mark as no longer loading
+                // Add file/image data to the message
+                image_url: responseImageUrl,
+                file_url: responseFileUrl,
+                file_name: responseFileName,
+                mime_type: responseMimeType
               }
             : msg
         )
@@ -895,88 +925,197 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <div
               className={`message-content-container ${bubbleBaseClasses} ${bubbleMaxWidth} bg-gray-100 text-slate-900 rounded-bl-none mr-auto`}
             >
-              {msg.isLoading ? (
-                <div className="flex items-center text-base text-slate-700 py-1">
-                  <svg className="animate-spin -ml-0.5 mr-2 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>Thinking...</span>
-                </div>
-              ) : msg.isError ? (
-                <p className="text-red-500 text-base">{currentMessageContent}</p> 
-              ) : (
-                <div className="prose prose-invert max-w-none chat-message-content font-sans text-base">
-                  <ReactMarkdown
-                    components={{
-                      pre: ({ node, ...props }) => {
-                        const childrenArray = React.Children.toArray(props.children);
-                        const codeNode = childrenArray[0] as React.ReactElement<any, string | React.JSXElementConstructor<any>> | undefined;
-                        
-                        if (codeNode && codeNode.type === 'code' && typeof codeNode.props?.className === 'string') {
-                          const match = /language-(\w+)/.exec(codeNode.props.className || '');
-                          const language = match ? match[1] : undefined;
-                          const codeString = String(codeNode.props.children ?? '').replace(/\n$/, '');
-                          return (
-                            <div className="my-2">
-                              <SyntaxHighlighter
-                                style={atomDark as any}
-                                language={language || 'text'}
-                                PreTag="div"
-                                className="rounded-lg px-3 py-2 overflow-x-auto font-mono text-sm leading-tight"
-                              >
-                                {codeString}
-                              </SyntaxHighlighter>
-                            </div>
-                          );
-                        }
-                        return <pre {...props} className="font-mono text-sm leading-tight my-2 p-2 bg-gray-700/50 rounded-md overflow-x-auto" />;
-                      },
-                      code: (props: CustomCodeProps) => {
-                        const { node, className, children, ...rest } = props;
-                        const inline = props.inline;
+              {(() => {
+                // Check if the message content is just an image URL
+                const isImageUrl = currentMessageContent && 
+                  typeof currentMessageContent === 'string' && 
+                  (currentMessageContent.startsWith('https://fusionai.sfo3.cdn.digitaloceanspaces.com') ||
+                   currentMessageContent.startsWith('https://fusionai.sfo3.digitaloceanspaces.com') ||
+                   /^https?:\/\/.*\.(jpg|jpeg|png|gif|webp)$/i.test(currentMessageContent.trim()));
 
-                        if (!node) return null;
-
-                        if (inline) {
-                          return (
-                            <code
-                              className="bg-gray-600/50 text-gray-200 px-1 py-0.5 rounded font-mono text-[0.9em]"
-                              {...rest}
-                            >
-                              {children}
-                            </code>
-                          );
-                        }
-                        const match = /language-(\w+)/.exec(className || '');
-                        if (match) {
-                            return (
+                if (msg.isLoading) {
+                  return (
+                    <div className="flex items-center text-base text-slate-700 py-1">
+                      <svg className="animate-spin -ml-0.5 mr-2 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Thinking...</span>
+                    </div>
+                  );
+                } else if (msg.isError) {
+                  return <p className="text-red-500 text-base">{currentMessageContent}</p>;
+                } else if (isImageUrl) {
+                  // Render image with floating download button - suppress text content
+                                     return (
+                     <div className="relative flex justify-center p-2 group">
+                       <img 
+                         src={currentMessageContent}
+                         alt="Generated Image"
+                         className="rounded-lg max-w-full sm:max-w-lg max-h-[600px] object-contain border border-gray-300 shadow-md"
+                         loading="lazy"
+                         onError={() => console.error("Failed to load image")}
+                       />
+                       <button
+                         onClick={async (e) => {
+                           e.preventDefault();
+                           try {
+                             // Method 1: Direct download link approach
+                             const link = document.createElement('a');
+                             link.href = currentMessageContent;
+                             link.download = `ai-generated-image-${Date.now()}.png`;
+                             link.target = '_blank';
+                             link.rel = 'noopener noreferrer';
+                             document.body.appendChild(link);
+                             link.click();
+                             document.body.removeChild(link);
+                           } catch (error) {
+                             console.error('Direct download failed, trying fetch method:', error);
+                             try {
+                               // Method 2: Fetch with CORS handling
+                               const response = await fetch(currentMessageContent, {
+                                 mode: 'cors',
+                                 headers: {
+                                   'Origin': window.location.origin
+                                 }
+                               });
+                               if (!response.ok) throw new Error('Fetch failed');
+                               const blob = await response.blob();
+                               const url = window.URL.createObjectURL(blob);
+                               const link = document.createElement('a');
+                               link.href = url;
+                               link.download = `ai-generated-image-${Date.now()}.png`;
+                               document.body.appendChild(link);
+                               link.click();
+                               document.body.removeChild(link);
+                               window.URL.revokeObjectURL(url);
+                             } catch (fetchError) {
+                               console.error('All download methods failed:', fetchError);
+                               // Final fallback: right-click context menu hint
+                               alert('Please right-click the image and select "Save image as..." to download.');
+                             }
+                           }
+                         }}
+                         className="absolute top-4 right-4 bg-white/20 backdrop-blur p-2 rounded-full shadow-sm 
+                                  opacity-0 group-hover:opacity-100 hover:bg-white/90 hover:shadow-md
+                                  md:opacity-0 md:group-hover:opacity-100
+                                  touch:opacity-60 active:opacity-100 active:bg-white/90
+                                  transition-all duration-200 ease-in-out
+                                  focus:opacity-100 focus:bg-white/90 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                         title="Download image"
+                         type="button"
+                       >
+                         <svg className="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+                           <path d="M9 3a1 1 0 112 0v8.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V3zM3 17a1 1 0 100-2h14a1 1 0 100 2H3z" />
+                         </svg>
+                       </button>
+                     </div>
+                   );
+                } else {
+                  // Regular text content
+                  return (
+                    <div className="prose prose-invert max-w-none chat-message-content font-sans text-base">
+                      <ReactMarkdown
+                        components={{
+                          pre: ({ node, ...props }) => {
+                            const childrenArray = React.Children.toArray(props.children);
+                            const codeNode = childrenArray[0] as React.ReactElement<any, string | React.JSXElementConstructor<any>> | undefined;
+                            
+                            if (codeNode && codeNode.type === 'code' && typeof codeNode.props?.className === 'string') {
+                              const match = /language-(\w+)/.exec(codeNode.props.className || '');
+                              const language = match ? match[1] : undefined;
+                              const codeString = String(codeNode.props.children ?? '').replace(/\n$/, '');
+                              return (
                                 <div className="my-2">
-                                    <SyntaxHighlighter
-                                        style={atomDark as any}
-                                        language={match[1]}
-                                        PreTag="div"
-                                        className="rounded-lg px-3 py-2 overflow-x-auto font-mono text-sm leading-tight"
-                                        {...rest}
-                                    >
-                                        {String(children ?? '').replace(/\n$/, '')}
-                                    </SyntaxHighlighter>
+                                  <SyntaxHighlighter
+                                    style={atomDark as any}
+                                    language={language || 'text'}
+                                    PreTag="div"
+                                    className="rounded-lg px-3 py-2 overflow-x-auto font-mono text-sm leading-tight"
+                                  >
+                                    {codeString}
+                                  </SyntaxHighlighter>
                                 </div>
+                              );
+                            }
+                            return <pre {...props} className="font-mono text-sm leading-tight my-2 p-2 bg-gray-700/50 rounded-md overflow-x-auto" />;
+                          },
+                          code: (props: CustomCodeProps) => {
+                            const { node, className, children, ...rest } = props;
+                            const inline = props.inline;
+
+                            if (!node) return null;
+
+                            if (inline) {
+                              return (
+                                <code
+                                  className="bg-gray-600/50 text-gray-200 px-1 py-0.5 rounded font-mono text-[0.9em]"
+                                  {...rest}
+                                >
+                                  {children}
+                                </code>
+                              );
+                            }
+                            const match = /language-(\w+)/.exec(className || '');
+                            if (match) {
+                                return (
+                                    <div className="my-2">
+                                        <SyntaxHighlighter
+                                            style={atomDark as any}
+                                            language={match[1]}
+                                            PreTag="div"
+                                            className="rounded-lg px-3 py-2 overflow-x-auto font-mono text-sm leading-tight"
+                                            {...rest}
+                                        >
+                                            {String(children ?? '').replace(/\n$/, '')}
+                                        </SyntaxHighlighter>
+                                    </div>
+                                );
+                            }
+                            return (
+                              <code 
+                                className={`${className || ''} font-mono text-sm bg-gray-700/30 rounded p-1 block whitespace-pre-wrap overflow-x-auto`}
+                                {...rest}
+                              >
+                                {children}
+                              </code>
                             );
-                        }
-                        return (
-                          <code 
-                            className={`${className || ''} font-mono text-sm bg-gray-700/30 rounded p-1 block whitespace-pre-wrap overflow-x-auto`}
-                            {...rest}
-                          >
-                            {children}
-                          </code>
-                        );
-                      },
-                    }}
+                          },
+                        }}
+                      >
+                        {currentMessageContent}
+                      </ReactMarkdown>
+                    </div>
+                  );
+                }
+              })()}
+              
+              {/* Legacy Image Attachments - keep for backward compatibility */}
+              {msg.image_url && !currentMessageContent?.startsWith('https://fusionai.sfo3') && (
+                <div className="mt-3">
+                  <img 
+                    src={msg.image_url} 
+                    alt="AI generated image"
+                    className="rounded-md max-w-full w-full sm:w-auto max-h-96 object-contain border border-gray-200"
+                    loading="lazy"
+                  />
+                </div>
+              )}
+              
+              {msg.file_url && (
+                <div className="mt-3">
+                  <a 
+                    href={msg.file_url} 
+                    download={msg.file_name || "Generated File"}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-200 transition-colors"
                   >
-                    {currentMessageContent}
-                  </ReactMarkdown>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="truncate">
+                      📎 {msg.file_name || "Download File"}
+                    </span>
+                  </a>
                 </div>
               )}
               
@@ -1062,16 +1201,33 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
             <div className="mt-2 md:mt-3 overflow-x-auto feature-buttons-container w-full">
               <div className="flex items-center flex-wrap gap-1 md:gap-1.5 justify-center">
-                {[ 
-                  { key: 'deep_research', label: 'Deep Research', icon: <FileText className="h-3 w-3 md:h-4 md:w-4 mr-1" /> }, 
-                  { key: 'think', label: 'Think', icon: <Lightbulb className="h-3 w-3 md:h-4 md:w-4 mr-1" /> }, 
-                  { key: 'write_code', label: 'Write/Code', icon: <Code className="h-3 w-3 md:h-4 md:w-4 mr-1" /> }, 
-                  { key: 'image', label: 'Image', icon: <Eye className="h-3 w-3 md:h-4 md:w-4 mr-1" /> }, 
-                ].map((mode) => ( 
-                  <button key={mode.key} type="button" onClick={() => handleModeButtonClick(mode.key)} className={`feature-button inline-flex items-center px-2 py-1 md:px-2.5 md:py-1.5 rounded-md border text-xs sm:text-sm whitespace-nowrap h-7 md:h-9 min-h-7 md:min-h-9 ${currentMode === mode.key ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}> 
-                    {mode.icon} <span className="hidden sm:inline">{mode.label}</span> 
-                  </button> 
-                ))}
+                {(() => {
+                  // All feature modes only available when NeuroSwitch is selected
+                  const isNeuroSwitchSelected = selectedModel === 'neuroswitch';
+                  
+                  if (!isNeuroSwitchSelected) {
+                    return null; // No feature buttons for other providers
+                  }
+                  
+                  // NeuroSwitch-specific modes
+                  const neuroSwitchModes = [
+                    { key: 'deep_research', label: 'Deep Research', icon: <FileText className="h-3 w-3 md:h-4 md:w-4 mr-1" /> }, 
+                    { key: 'canvas', label: 'Canvas', icon: <Lightbulb className="h-3 w-3 md:h-4 md:w-4 mr-1" /> }, 
+                    { key: 'video', label: 'Video', icon: <Code className="h-3 w-3 md:h-4 md:w-4 mr-1" /> },
+                    { key: 'image', label: 'Image', icon: <Eye className="h-3 w-3 md:h-4 md:w-4 mr-1" /> }
+                  ];
+                  
+                  return neuroSwitchModes.map((mode) => (
+                    <button 
+                      key={mode.key} 
+                      type="button" 
+                      onClick={() => handleModeButtonClick(mode.key)} 
+                      className={`feature-button inline-flex items-center px-2 py-1 md:px-2.5 md:py-1.5 rounded-md border text-xs sm:text-sm whitespace-nowrap h-7 md:h-9 min-h-7 md:min-h-9 ${currentMode === mode.key ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}
+                    > 
+                      {mode.icon} <span className="hidden sm:inline">{mode.label}</span> 
+                    </button>
+                  ));
+                })()}
               </div>
             </div>
           </form>

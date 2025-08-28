@@ -310,12 +310,18 @@ router.get('/activity/export', verifyToken, async (req: Request, res: Response) 
       apiKeyId: filterApiKeyId 
     } = req.query;
 
-    const toDate = to ? new Date(to as string) : new Date();
-    const fromDate = from ? new Date(from as string) : new Date(new Date().setDate(toDate.getDate() - 30));
+    // Parse raw dates
+const toDate = to ? new Date(to as string) : new Date();
+const fromDate = from ? new Date(from as string) : new Date(new Date().setDate(toDate.getDate() - 30));
 
-    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date format for export. Please use YYYY-MM-DD.' });
-    }
+// Adjust toDate to include the full selected day (23:59:59.999)
+toDate.setHours(23, 59, 59, 999);
+
+// Validate
+if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+  return res.status(400).json({ error: 'Invalid date format. Please use YYYY-MM-DD.' });
+}
+
     
     const queryParams: any[] = [userId, fromDate, toDate];
     let whereClause = '';

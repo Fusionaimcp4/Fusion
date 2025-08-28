@@ -208,7 +208,7 @@ export default function RankingsTable({
                 <td className={`hidden md:table-cell text-sm text-gray-500 ${compactMode ? 'px-2 py-2' : 'px-4 py-4'}`}>
                   <div className="flex items-center space-x-2">
                     <span>{model.provider}</span>
-                    {model.sources.openrouter && <span className="text-xs text-blue-600" title="OpenRouter">OR</span>}
+                    
                     {model.sources.artificial_analysis && <span className="text-xs text-purple-600" title="ArtificialAnalysis">AA</span>}
                   </div>
                 </td>

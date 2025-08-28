@@ -133,6 +133,8 @@ export default function AdminSettingsPage() {
           name={config.key}
           value={config.value}
           onChange={(e) => handleInputChange(config.key, e.target.value, type)}
+          step={config.key === 'neuroswitch_classifier_fee_cents' ? '0.1' : (config.key.includes('cents') ? '1' : 'any')}
+          min="0"
           className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
           placeholder={config.key.includes('limit') || config.key.includes('cents') ? '0' : 'Enter value'}
         />

@@ -8,6 +8,18 @@ const DEFAULT_FALLBACK_RATE = { input: 0.002, output: 0.002 }; // Per 1K tokens
 const FALLBACK_NEUROSWITCH_CLASSIFIER_FEE_DOLLARS = 0.001; // Fallback if DB config fails
 const FALLBACK_PRICING_PRIME_MULTIPLIER = 1.0; // Fallback to no prime
 
+// Fixed-price models that charge per generation (not per token)
+// Key format: "provider/model_id_string" → cost in dollars
+const FIXED_MODEL_COSTS: Record<string, number> = {
+  'openai/dall-e-3': 0.04,        // DALL-E 3 1024x1024 image generation
+  'openai/dall-e-3-wide': 0.08,   // DALL-E 3 1024x1792 image generation  
+  'openai/dall-e-3-tall': 0.08,   // DALL-E 3 1792x1024 image generation
+  // Future models can be added here:
+  // 'google/imagen-2': 0.05,
+  // 'openai/whisper-1': 0.006,
+  // 'openai/tts-1': 0.015,
+};
+
 /**
  * Calculates the cost for LLM provider usage based on input and output tokens,
  * fetching rates from the 'models' database table and applying a global prime.
@@ -23,6 +35,44 @@ export async function calculateLlmProviderCost(
   inputTokens: number,
   outputTokens: number
 ): Promise<number> {
+  // Early exit for fixed-price models (image/audio/video generation)
+  if (modelIdString) {
+    let dbProvider = neuroSwitchProvider.toLowerCase();
+    if (dbProvider === 'gemini') {
+      dbProvider = 'google';
+    } else if (dbProvider === 'claude') {
+      dbProvider = 'anthropic';
+    }
+    
+    const fixedKey = `${dbProvider}/${modelIdString.toLowerCase()}`;
+    if (FIXED_MODEL_COSTS[fixedKey] !== undefined) {
+      const baseCost = FIXED_MODEL_COSTS[fixedKey];
+      
+      // Fetch and apply pricing prime (same logic as token-based models)
+      let pricingPrimeMultiplier = FALLBACK_PRICING_PRIME_MULTIPLIER;
+      try {
+        const primeConfig = await pool.query('SELECT value FROM app_config WHERE key = $1', ['pricing_prime_percentage']);
+        if (primeConfig.rows.length > 0) {
+          const primePercentage = parseFloat(primeConfig.rows[0].value);
+          if (!isNaN(primePercentage) && primePercentage >= 0) {
+            pricingPrimeMultiplier = 1 + (primePercentage / 100);
+          } else {
+            console.warn(`[costCalculator] Invalid pricing_prime_percentage in app_config: ${primeConfig.rows[0].value}. Using fallback multiplier.`);
+          }
+        } else {
+          console.warn('[costCalculator] pricing_prime_percentage not found in app_config. Using fallback multiplier.');
+        }
+      } catch (dbError) {
+        console.error('[costCalculator] DB error fetching pricing_prime_percentage. Using fallback multiplier.', dbError);
+      }
+      
+      const finalCost = baseCost * pricingPrimeMultiplier;
+      console.log(`[costCalculator] Fixed-price model ${fixedKey}: base=$${baseCost}, prime=${pricingPrimeMultiplier}x, final=$${finalCost.toFixed(6)}`);
+      return parseFloat(finalCost.toFixed(6));
+    }
+  }
+
+  // Continue with normal token-based calculation for all other models
   let baseCost: number;
 
   if (!modelIdString) {
@@ -93,7 +143,7 @@ export async function getNeuroSwitchClassifierFee(): Promise<number> {
   try {
     const feeConfig = await pool.query('SELECT value FROM app_config WHERE key = $1', ['neuroswitch_classifier_fee_cents']);
     if (feeConfig.rows.length > 0) {
-      const feeCents = parseInt(feeConfig.rows[0].value, 10);
+      const feeCents = parseFloat(feeConfig.rows[0].value);
       if (!isNaN(feeCents) && feeCents >= 0) {
         return feeCents / 100; // Convert cents to dollars
       } else {

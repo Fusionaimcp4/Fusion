@@ -137,22 +137,12 @@ const allowedOrigins = [
   process.env.FRONTEND_URL     // Custom frontend URL from environment
 ].filter(Boolean); // Remove any undefined values
 
+// Log the configuration on startup for debugging
+console.log('[CORS] Configured allowed origins:', allowedOrigins);
+console.log('[CORS] FRONTEND_URL from env:', process.env.FRONTEND_URL);
+
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    
-    // Log the rejected origin for debugging production issues
-    console.log(`[CORS] Rejected origin: ${origin}`);
-    console.log(`[CORS] Allowed origins:`, allowedOrigins);
-    
-    const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
-    return callback(new Error(msg), false);
-  },
+  origin: ['https://fusion.mcp4.ai', 'http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
 }));
 

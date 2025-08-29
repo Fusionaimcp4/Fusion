@@ -129,20 +129,8 @@ app.use(express.json({
   }
 }));
 
-// CORS Configuration - Support both development and production
-const allowedOrigins = [
-  'http://localhost:3000',     // Local development frontend
-  'http://localhost:3001',     // Alternative local port
-  'https://fusion.mcp4.ai',    // Production frontend
-  process.env.FRONTEND_URL     // Custom frontend URL from environment
-].filter(Boolean); // Remove any undefined values
-
-// Log the configuration on startup for debugging
-console.log('[CORS] Configured allowed origins:', allowedOrigins);
-console.log('[CORS] FRONTEND_URL from env:', process.env.FRONTEND_URL);
-
 app.use(cors({
-  origin: ['https://fusion.mcp4.ai', 'http://localhost:3000', 'http://localhost:3001'],
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
 }));
 

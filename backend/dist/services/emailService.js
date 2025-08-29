@@ -4,19 +4,27 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendVerificationEmail = void 0;
-const mail_1 = __importDefault(require("@sendgrid/mail"));
+
+const nodemailer_1 = __importDefault(require("nodemailer"));
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config(); // Ensures environment variables are loaded from .env
-// Initialize SendGrid API Key
-// It's crucial that SENDGRID_API_KEY is set in your .env file or environment variables.
-if (process.env.SENDGRID_API_KEY) {
-    mail_1.default.setApiKey(process.env.SENDGRID_API_KEY);
+
+// Initialize Nodemailer transporter for Gmail SMTP
+let transporter;
+if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    transporter = nodemailer_1.default.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: parseInt(process.env.SMTP_PORT || "587"),
+        secure: false, // use TLS
+        auth: {
+            user: process.env.SMTP_USER, // Gmail address
+            pass: process.env.SMTP_PASS  // Gmail app password
+        }
+    });
+} else {
+    console.warn("CRITICAL: SMTP_USER or SMTP_PASS not defined in environment variables. Email sending will be disabled.");
 }
-else {
-    console.warn('CRITICAL: SENDGRID_API_KEY is not defined in environment variables. Email sending will be disabled.');
-    // Optionally, you could throw an error here to prevent the app from starting if email is critical
-    // throw new Error('SENDGRID_API_KEY is not defined.');
-}
+
 /**
  * Sends a verification email to the user.
  *
@@ -25,34 +33,35 @@ else {
  * @returns {Promise<{ success: boolean; error?: string }>} - An object indicating success or failure.
  */
 const sendVerificationEmail = async (toEmail, token) => {
-    // Check if SendGrid is configured before attempting to send
-    if (!process.env.SENDGRID_API_KEY) {
-        const errorMessage = 'Email service (SendGrid API Key) is not configured. Cannot send verification email.';
+    if (!transporter) {
+        const errorMessage = "Email service is not configured. Cannot send verification email.";
         console.error(errorMessage);
         return { success: false, error: errorMessage };
     }
-    const senderEmail = process.env.SENDER_EMAIL_ADDRESS;
+
+    const senderEmail = process.env.SENDER_EMAIL_ADDRESS || process.env.SMTP_USER;
     if (!senderEmail) {
-        const errorMessage = 'Sender email address (SENDER_EMAIL_ADDRESS) is not configured. Cannot send verification email.';
+        const errorMessage = "Sender email address is not configured.";
         console.error(errorMessage);
         return { success: false, error: errorMessage };
     }
+
     const frontendUrl = process.env.FRONTEND_URL;
     if (!frontendUrl) {
-        const errorMessage = 'Frontend URL (FRONTEND_URL) is not configured. Cannot create verification link.';
+        const errorMessage = "Frontend URL (FRONTEND_URL) is not configured. Cannot create verification link.";
         console.error(errorMessage);
         return { success: false, error: errorMessage };
     }
+
     const verificationUrl = `${frontendUrl}/auth/verify-email?token=${token}`;
-    // Construct the email message
-    // Ensure this MailDataRequired object matches SendGrid's expectations.
-    const msg = {
-        to: toEmail,
+
+    const mailOptions = {
         from: {
-            email: senderEmail,
-            name: 'Fusion AI Team' // Optional: Customize the sender name
+            name: "Fusion AI Team",
+            address: senderEmail
         },
-        subject: 'Verify Your Email Address for Fusion AI',
+        to: toEmail,
+        subject: "Verify Your Email Address for Fusion AI",
         html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
         <h2 style="color: #f97316; text-align: center;">Welcome to Fusion AI!</h2>
@@ -72,45 +81,26 @@ const sendVerificationEmail = async (toEmail, token) => {
         <p><strong>The Fusion AI Team</strong></p>
       </div>
     `,
-        text: `
-      Welcome to Fusion AI!
+        text: `Welcome to Fusion AI!
+        
+Thanks for signing up. To complete your registration and activate your account, please verify your email address by visiting the following URL:
+${verificationUrl}
 
-      Thanks for signing up. To complete your registration and activate your account, please verify your email address by visiting the following URL:
-      ${verificationUrl}
+This verification link is valid for 24 hours.
 
-      This verification link is valid for 24 hours.
+If you did not create an account with Fusion AI, please disregard this email.
 
-      If you did not create an account with Fusion AI, please disregard this email.
-
-      Thank you,
-      The Fusion AI Team
-    `,
-        trackingSettings: {
-            clickTracking: {
-                enable: false, // Optional: disable click tracking for verification links if preferred
-                enableText: false
-            }
-        }
+Thank you,
+The Fusion AI Team`
     };
+
     try {
-        await mail_1.default.send(msg);
+        await transporter.sendMail(mailOptions);
         console.log(`[EmailService] Verification email successfully sent to ${toEmail}`);
         return { success: true };
-    }
-    catch (error) {
-        console.error(`[EmailService] Error sending verification email to ${toEmail}:`);
-        // Log detailed error from SendGrid if available
-        if (error.response && error.response.body && error.response.body.errors) {
-            console.error('[EmailService] SendGrid API Error details:', JSON.stringify(error.response.body.errors, null, 2));
-        }
-        // Log the full error object for more context if needed, but be mindful of large objects in logs
-        // console.error('[EmailService] Full error object:', error);
-        // Determine a more specific error message if possible
-        let errorMessage = 'Failed to send verification email due to an internal error.';
-        if (error.response && error.response.body && error.response.body.errors && error.response.body.errors.length > 0) {
-            errorMessage = `SendGrid error: ${error.response.body.errors.map((e) => e.message).join(', ')}`;
-        }
-        return { success: false, error: errorMessage };
+    } catch (error) {
+        console.error(`[EmailService] Error sending verification email to ${toEmail}:`, error.message);
+        return { success: false, error: error.message };
     }
 };
 exports.sendVerificationEmail = sendVerificationEmail;

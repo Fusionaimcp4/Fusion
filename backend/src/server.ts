@@ -129,8 +129,26 @@ app.use(express.json({
   }
 }));
 
+// CORS Configuration - Support both development and production
+const allowedOrigins = [
+  'http://localhost:3000',     // Local development frontend
+  'http://localhost:3001',     // Alternative local port
+  'https://fusion.mcp4.ai',    // Production frontend
+  process.env.FRONTEND_URL     // Custom frontend URL from environment
+].filter(Boolean); // Remove any undefined values
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
+    return callback(new Error(msg), false);
+  },
   credentials: true,
 }));
 

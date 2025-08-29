@@ -86,10 +86,13 @@ export async function calculateLlmProviderCost(
       dbProvider = 'anthropic';
     }
 
+    // Construct the full id_string format: "provider/model"
+    const fullIdString = `${dbProvider}/${modelIdString.toLowerCase()}`;
+    
     try {
       const result = await pool.query(
         'SELECT input_cost_per_million_tokens, output_cost_per_million_tokens FROM models WHERE LOWER(provider) = LOWER($1) AND LOWER(id_string) = LOWER($2)',
-        [dbProvider, modelIdString.toLowerCase()]
+        [dbProvider, fullIdString]
       );
 
       if (result.rows.length > 0) {
@@ -98,17 +101,17 @@ export async function calculateLlmProviderCost(
         const outputRatePer1k = parseFloat(dbRow.output_cost_per_million_tokens) / 1000;
         
         if (isNaN(inputRatePer1k) || isNaN(outputRatePer1k)) {
-          console.warn(`[costCalculator] Invalid rates in DB for ${dbProvider}/${modelIdString}. Using fallback for base cost.`);
+          console.warn(`[costCalculator] Invalid rates in DB for ${fullIdString}. Using fallback for base cost.`);
           baseCost = ( (inputTokens / 1000) * DEFAULT_FALLBACK_RATE.input ) + ( (outputTokens / 1000) * DEFAULT_FALLBACK_RATE.output );
         } else {
           baseCost = ( (inputTokens / 1000) * inputRatePer1k ) + ( (outputTokens / 1000) * outputRatePer1k );
         }
       } else {
-        console.warn(`[costCalculator] Pricing not found in DB for ${dbProvider}/${modelIdString}. Using default fallback rate for base cost.`);
+        console.warn(`[costCalculator] Pricing not found in DB for ${fullIdString}. Using default fallback rate for base cost.`);
         baseCost = ( (inputTokens / 1000) * DEFAULT_FALLBACK_RATE.input ) + ( (outputTokens / 1000) * DEFAULT_FALLBACK_RATE.output );
       }
     } catch (error) {
-      console.error(`[costCalculator] DB error fetching pricing for ${dbProvider}/${modelIdString}. Using fallback for base cost.`, error);
+      console.error(`[costCalculator] DB error fetching pricing for ${fullIdString}. Using fallback for base cost.`, error);
       baseCost = ( (inputTokens / 1000) * DEFAULT_FALLBACK_RATE.input ) + ( (outputTokens / 1000) * DEFAULT_FALLBACK_RATE.output );
     }
   }

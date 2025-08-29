@@ -26,7 +26,7 @@ $$ LANGUAGE plpgsql;
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,  -- allow NULL for OAuth-only accounts
     display_name VARCHAR(100),
     avatar_url TEXT,
     is_active BOOLEAN DEFAULT TRUE,
@@ -36,11 +36,16 @@ CREATE TABLE users (
     stripe_customer_id VARCHAR(255) UNIQUE,
     name VARCHAR(255),
     emergency_fallback_tokens_used INTEGER DEFAULT 0,
-    -- New verification fields
+
+    -- Verification fields
     is_verified BOOLEAN DEFAULT FALSE,
     email_verification_token TEXT,
     email_verification_token_expires_at TIMESTAMP,
-    email_verified_at TIMESTAMP
+    email_verified_at TIMESTAMP,
+
+    -- OAuth fields (needed for old Google accounts)
+    oauth_provider VARCHAR(50),
+    oauth_id TEXT
 );
 
 -- ==================================================

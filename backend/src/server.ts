@@ -146,6 +146,10 @@ app.use(cors({
       return callback(null, true);
     }
     
+    // Log the rejected origin for debugging production issues
+    console.log(`[CORS] Rejected origin: ${origin}`);
+    console.log(`[CORS] Allowed origins:`, allowedOrigins);
+    
     const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
     return callback(new Error(msg), false);
   },

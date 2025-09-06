@@ -221,7 +221,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
                 return done(null, existingUser.rows[0]);
             }
             // Create new user
-            const newUserResult = await db_1.default.query('INSERT INTO users (email, oauth_provider, oauth_id, display_name, is_verified) VALUES ($1, $2, $3, $4, TRUE) RETURNING *', [((_b = (_a = profile.emails) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.value) || '', 'google', profile.id, profile.displayName || ((_c = profile.name) === null || _c === void 0 ? void 0 : _c.givenName) || 'Google User']);
+            const newUserResult = await db_1.default.query('INSERT INTO users (email, password_hash, oauth_provider, oauth_id, display_name, is_verified) VALUES ($1, NULL, $2, $3, $4, TRUE) RETURNING *', [((_b = (_a = profile.emails) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.value) || '', 'google', profile.id, profile.displayName || ((_c = profile.name) === null || _c === void 0 ? void 0 : _c.givenName) || 'Google User']);
             const newUser = newUserResult.rows[0];
             await setupNewUserDefaults(newUser.id, db_1.default);
             return done(null, newUser);
@@ -246,7 +246,7 @@ if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
             if (existingUser.rows.length > 0) {
                 return done(null, existingUser.rows[0]);
             }
-            const newUserResult = await db_1.default.query('INSERT INTO users (email, oauth_provider, oauth_id, display_name, is_verified) VALUES ($1, $2, $3, $4, TRUE) RETURNING *', [((_b = (_a = profile.emails) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.value) || '', 'microsoft', profile.id, profile.displayName || ((_c = profile.name) === null || _c === void 0 ? void 0 : _c.givenName) || 'User']);
+            const newUserResult = await db_1.default.query('INSERT INTO users (email, password_hash, oauth_provider, oauth_id, display_name, is_verified) VALUES ($1, NULL, $2, $3, $4, TRUE) RETURNING *', [((_b = (_a = profile.emails) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.value) || '', 'microsoft', profile.id, profile.displayName || ((_c = profile.name) === null || _c === void 0 ? void 0 : _c.givenName) || 'User']);
             const newUser = newUserResult.rows[0];
             await setupNewUserDefaults(newUser.id, db_1.default);
             return done(null, newUser);
@@ -294,7 +294,7 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     passport_1.default.use(new GitHubStrategy({
         clientID: process.env.GITHUB_CLIENT_ID,
         clientSecret: process.env.GITHUB_CLIENT_SECRET,
-        callbackURL: '/auth/github/callback'
+        callbackURL: process.env.GITHUB_CALLBACK_URL || 'https://api.mcp4.ai/auth/github/callback'
     }, async (_accessToken, _refreshToken, profile, done) => {
         var _a, _b;
         try {
@@ -304,7 +304,7 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
             }
             const email = ((_b = (_a = profile.emails) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.value) || `${profile.username}@users.noreply.github.com`;
             const displayName = profile.displayName || profile.username || 'GitHub User';
-            const newUserResult = await db_1.default.query('INSERT INTO users (email, oauth_provider, oauth_id, display_name, is_verified) VALUES ($1, $2, $3, $4, TRUE) RETURNING *', [email, 'github', profile.id, displayName]);
+            const newUserResult = await db_1.default.query('INSERT INTO users (email, password_hash, oauth_provider, oauth_id, display_name, is_verified) VALUES ($1, NULL, $2, $3, $4, TRUE) RETURNING *', [email, 'github', profile.id, displayName]);
             const newUser = newUserResult.rows[0];
             await setupNewUserDefaults(newUser.id, db_1.default);
             return done(null, newUser);

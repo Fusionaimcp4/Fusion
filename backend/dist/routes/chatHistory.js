@@ -9,7 +9,7 @@ const auth_1 = require("../middleware/auth");
 const router = express_1.default.Router();
 // POST /api/chats - Create a new chat or add messages to an existing one
 router.post('/', auth_1.verifyToken, async (req, res) => {
-    const { chatId, title_suggestion, ui_selected_provider_for_session, user_message_content, assistant_message_content, assistant_message_actual_provider, assistant_message_actual_model_used } = req.body;
+    const { chatId, title_suggestion, ui_selected_provider_for_session, user_message_content, assistant_message_content, assistant_message_actual_provider, assistant_message_actual_model_used, image_url, file_url, file_name, mime_type } = req.body;
     const userId = req.user.id;
     if (!userId) {
         return res.status(403).json({ error: 'User ID not found in token' });
@@ -61,15 +61,19 @@ router.post('/', auth_1.verifyToken, async (req, res) => {
     `;
         await client.query(userMessageQuery, [currentChatId, 'user', user_message_content]);
         const assistantMessageQuery = `
-      INSERT INTO messages (chat_id, role, content, provider, model_used, timestamp)
-      VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id;
+      INSERT INTO messages (chat_id, role, content, provider, model_used, image_url, file_url, file_name, mime_type, timestamp)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id;
     `;
         await client.query(assistantMessageQuery, [
             currentChatId,
             'assistant',
             assistant_message_content,
             assistant_message_actual_provider,
-            assistant_message_actual_model_used
+            assistant_message_actual_model_used,
+            image_url || null,
+            file_url || null,
+            file_name || null,
+            mime_type || null
         ]);
         await client.query('COMMIT');
         res.status(201).json({
@@ -132,7 +136,7 @@ router.get('/:chatId', auth_1.verifyToken, async (req, res) => {
         const chatDetails = chatResult.rows[0];
         // Then, get all messages for this chat
         const messagesQuery = `
-      SELECT id, chat_id, role, content, provider, model_used, timestamp
+      SELECT id, chat_id, role, content, provider, model_used, image_url, file_url, file_name, mime_type, timestamp
       FROM messages
       WHERE chat_id = $1
       ORDER BY timestamp ASC;
@@ -146,6 +150,47 @@ router.get('/:chatId', auth_1.verifyToken, async (req, res) => {
     catch (error) {
         console.error('Error fetching specific chat:', error);
         res.status(500).json({ error: 'Failed to fetch specific chat' });
+    }
+});
+// GET /api/chats/:chatId/tokens - Get total tokens used in this chat
+router.get('/:chatId/tokens', auth_1.verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const { chatId } = req.params;
+    if (!userId) {
+        return res.status(403).json({ error: 'User ID not found in token' });
+    }
+    if (!chatId || isNaN(parseInt(chatId))) {
+        return res.status(400).json({ error: 'Invalid chat ID format.' });
+    }
+    const numericChatId = parseInt(chatId);
+    try {
+        // Verify chat ownership
+        const chatCheck = await db_1.default.query('SELECT id FROM chats WHERE id = $1 AND user_id = $2', [numericChatId, userId]);
+        if (chatCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Chat not found or access denied' });
+        }
+        // Get total tokens for this chat
+        const tokenResult = await db_1.default.query(`SELECT 
+         COALESCE(SUM(prompt_tokens), 0) as total_input_tokens,
+         COALESCE(SUM(completion_tokens), 0) as total_output_tokens,
+         COALESCE(SUM(total_tokens), 0) as total_tokens,
+         COUNT(*) as total_requests
+       FROM usage_logs 
+       WHERE chat_id = $1 AND user_id = $2`, [numericChatId, userId]);
+        const tokenStats = tokenResult.rows[0];
+        res.json({
+            chat_id: numericChatId,
+            total_tokens: parseInt(tokenStats.total_tokens) || 0,
+            total_input_tokens: parseInt(tokenStats.total_input_tokens) || 0,
+            total_output_tokens: parseInt(tokenStats.total_output_tokens) || 0,
+            total_requests: parseInt(tokenStats.total_requests) || 0,
+            is_approaching_limit: parseInt(tokenStats.total_tokens) >= 180000, // 90% of 200k
+            is_over_limit: parseInt(tokenStats.total_tokens) >= 200000
+        });
+    }
+    catch (error) {
+        console.error('Error fetching chat tokens:', error);
+        res.status(500).json({ error: 'Failed to fetch chat token usage' });
     }
 });
 // PUT /api/chats/:chatId - Update chat title or UI selected provider

@@ -9,6 +9,7 @@ const auth_1 = require("../middleware/auth");
 const db_1 = __importDefault(require("../db"));
 const costCalculator_1 = require("../utils/costCalculator");
 const crypto_1 = require("../utils/crypto");
+const storageUploader_1 = require("../utils/storageUploader");
 const router = express_1.default.Router();
 // Simple pricing map (per 1K tokens, in USD)
 const PRICING = {
@@ -20,15 +21,16 @@ const PRICING = {
 };
 const PREMIUM_RATE = 0.2; // 20%
 // Log usage to database
-async function logUsage(userId, provider, model, promptTokens, completionTokens, totalTokens, responseTimeInput = 0, fallbackReason = null, llmCost = null, apiKeyId = null, requestModel, neuroswitchFee = null) {
+async function logUsage(userId, provider, model, promptTokens, completionTokens, totalTokens, responseTimeInput = 0, fallbackReason = null, llmCost = null, apiKeyId = null, requestModel, neuroswitchFee = null, chatId = null // 🆕 NEW: Optional chat_id for per-chat token tracking
+) {
     let queryParams = [];
     try {
         // Ensure responseTime is a number, default to 0 if null or undefined
         const finalResponseTime = (responseTimeInput === null || typeof responseTimeInput === 'undefined') ? 0 : responseTimeInput;
-        queryParams = [userId, provider, model, promptTokens || 0, completionTokens || 0, totalTokens || 0, finalResponseTime, fallbackReason, llmCost, apiKeyId, requestModel, neuroswitchFee];
+        queryParams = [userId, provider, model, promptTokens || 0, completionTokens || 0, totalTokens || 0, finalResponseTime, fallbackReason, llmCost, apiKeyId, requestModel, neuroswitchFee, chatId];
         console.log('Executing logUsage INSERT with params:', queryParams); // Log parameters
-        await db_1.default.query(`INSERT INTO usage_logs (user_id, provider, model, prompt_tokens, completion_tokens, total_tokens, response_time, fallback_reason, cost, api_key_id, request_model, neuroswitch_fee, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`, queryParams);
+        await db_1.default.query(`INSERT INTO usage_logs (user_id, provider, model, prompt_tokens, completion_tokens, total_tokens, response_time, fallback_reason, cost, api_key_id, request_model, neuroswitch_fee, chat_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())`, queryParams);
         console.log('logUsage INSERT successful for user_id:', userId); // Log success
     }
     catch (error) {
@@ -595,10 +597,67 @@ router.post('/', auth_1.verifyToken, async (req, res) => {
             ? neuroSwitchActualModel
             : modelForCosting || neuroSwitchActualModel;
         console.log(`[API Chat] FINAL LOGGING PARAMS: neuroSwitchFeeToLog: ${neuroSwitchFeeToLog}, llmProviderCost: ${llmProviderCost}, apiKeyIdToLog: ${apiKeyIdToLog}, requestModel(from frontend): ${req.body.model}, modelLoggedToDb: ${modelLoggedToDb}`);
+        // Parse chat_id for token tracking (null for standalone API calls)
+        const chatIdNumeric = chatIdFromHeader ? parseInt(chatIdFromHeader, 10) : null;
         await logUsage(userId, neuroSwitchActualProvider, modelLoggedToDb || 'undefined', promptTokens, completionTokens, totalTokensForLog, responseTime, neuroSwitchFallbackReason, llmProviderCost, // Log the original LLM provider cost, regardless of allowance
         apiKeyIdToLog, req.body.model, // request_model from frontend
-        neuroSwitchFeeToLog // Log the original NeuroSwitch fee, regardless of allowance
+        neuroSwitchFeeToLog, // Log the original NeuroSwitch fee, regardless of allowance
+        chatIdNumeric // 🆕 NEW: Pass chat_id for per-chat token tracking
         );
+        // --- File/Image Processing ---
+        let processedImageUrl = null;
+        let processedFileUrl = null;
+        let processedFileName = null;
+        let processedMimeType = null;
+        // Validate Spaces configuration
+        if ((data.image_base64 || data.generated_file_content) && !(0, storageUploader_1.validateSpacesConfig)()) {
+            console.warn('[API Chat] DigitalOcean Spaces not configured. Skipping file upload.');
+        }
+        else {
+            // Handle image_url (direct URL)
+            if (data.image_url) {
+                processedImageUrl = data.image_url;
+                console.log('[API Chat] Using direct image URL:', processedImageUrl);
+            }
+            // Handle image_base64 (upload to Spaces)
+            if (data.image_base64) {
+                try {
+                    const uploadResult = await (0, storageUploader_1.uploadBase64Image)(data.image_base64);
+                    if (uploadResult.success) {
+                        processedImageUrl = uploadResult.url;
+                        console.log('[API Chat] Uploaded base64 image to Spaces:', processedImageUrl);
+                    }
+                    else {
+                        console.error('[API Chat] Failed to upload base64 image:', uploadResult.error);
+                    }
+                }
+                catch (error) {
+                    console.error('[API Chat] Error processing base64 image:', error.message);
+                }
+            }
+            // Handle generated_file_content (upload file to Spaces)
+            if (data.generated_file_content) {
+                try {
+                    const fileName = data.generated_file_name || `generated_file_${Date.now()}`;
+                    const uploadResult = await (0, storageUploader_1.uploadFileContent)(data.generated_file_content, fileName);
+                    if (uploadResult.success) {
+                        processedFileUrl = uploadResult.url;
+                        processedFileName = fileName;
+                        // Determine MIME type from filename or content
+                        const mime = require('mime-types');
+                        processedMimeType = mime.lookup(fileName) || 'application/octet-stream';
+                        console.log('[API Chat] Uploaded generated file to Spaces:', processedFileUrl);
+                    }
+                    else {
+                        console.error('[API Chat] Failed to upload generated file:', uploadResult.error);
+                    }
+                }
+                catch (error) {
+                    console.error('[API Chat] Error processing generated file:', error.message);
+                }
+            }
+        }
+        // --- End File/Image Processing ---
         res.json({
             prompt,
             response: { text: data.response },
@@ -614,7 +673,12 @@ router.post('/', auth_1.verifyToken, async (req, res) => {
             timestamp: new Date().toISOString(),
             // Add tool information if provided by NeuroSwitch
             tool_name: data.tool_name,
-            file_downloads: data.file_downloads
+            file_downloads: data.file_downloads,
+            // Add processed file/image information
+            image_url: processedImageUrl,
+            file_url: processedFileUrl,
+            file_name: processedFileName,
+            mime_type: processedMimeType
         });
     }
     catch (err) {

@@ -229,10 +229,14 @@ router.get('/activity/export', auth_1.verifyToken, async (req, res) => {
             return res.status(403).json({ error: 'User ID not found in token' });
         }
         let { from, to, provider: filterProvider, model: filterModel, apiKeyId: filterApiKeyId } = req.query;
+        // Parse raw dates
         const toDate = to ? new Date(to) : new Date();
         const fromDate = from ? new Date(from) : new Date(new Date().setDate(toDate.getDate() - 30));
+        // Adjust toDate to include the full selected day (23:59:59.999)
+        toDate.setHours(23, 59, 59, 999);
+        // Validate
         if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
-            return res.status(400).json({ error: 'Invalid date format for export. Please use YYYY-MM-DD.' });
+            return res.status(400).json({ error: 'Invalid date format. Please use YYYY-MM-DD.' });
         }
         const queryParams = [userId, fromDate, toDate];
         let whereClause = '';

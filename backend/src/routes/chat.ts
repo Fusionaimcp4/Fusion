@@ -55,19 +55,20 @@ async function logUsage(
   llmCost: number | null = null,
   apiKeyId: number | null = null,
   requestModel: string | null | undefined,
-  neuroswitchFee: number | null = null
+  neuroswitchFee: number | null = null,
+  chatId: number | null = null  // 🆕 NEW: Optional chat_id for per-chat token tracking
 ) {
   let queryParams: any[] = [];
   try {
     // Ensure responseTime is a number, default to 0 if null or undefined
     const finalResponseTime = (responseTimeInput === null || typeof responseTimeInput === 'undefined') ? 0 : responseTimeInput;
     
-    queryParams = [userId, provider, model, promptTokens || 0, completionTokens || 0, totalTokens || 0, finalResponseTime, fallbackReason, llmCost, apiKeyId, requestModel, neuroswitchFee];
+    queryParams = [userId, provider, model, promptTokens || 0, completionTokens || 0, totalTokens || 0, finalResponseTime, fallbackReason, llmCost, apiKeyId, requestModel, neuroswitchFee, chatId];
     console.log('Executing logUsage INSERT with params:', queryParams); // Log parameters
 
     await pool.query(
-      `INSERT INTO usage_logs (user_id, provider, model, prompt_tokens, completion_tokens, total_tokens, response_time, fallback_reason, cost, api_key_id, request_model, neuroswitch_fee, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
+      `INSERT INTO usage_logs (user_id, provider, model, prompt_tokens, completion_tokens, total_tokens, response_time, fallback_reason, cost, api_key_id, request_model, neuroswitch_fee, chat_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())`,
       queryParams
     );
     console.log('logUsage INSERT successful for user_id:', userId); // Log success
@@ -681,6 +682,9 @@ if (chatIdFromHeader) { // Removed isProd condition
 
     console.log(`[API Chat] FINAL LOGGING PARAMS: neuroSwitchFeeToLog: ${neuroSwitchFeeToLog}, llmProviderCost: ${llmProviderCost}, apiKeyIdToLog: ${apiKeyIdToLog}, requestModel(from frontend): ${req.body.model}, modelLoggedToDb: ${modelLoggedToDb}`);
 
+    // Parse chat_id for token tracking (null for standalone API calls)
+    const chatIdNumeric = chatIdFromHeader ? parseInt(chatIdFromHeader, 10) : null;
+
     await logUsage(
       userId,
       neuroSwitchActualProvider,
@@ -693,7 +697,8 @@ if (chatIdFromHeader) { // Removed isProd condition
       llmProviderCost, // Log the original LLM provider cost, regardless of allowance
       apiKeyIdToLog,
       req.body.model, // request_model from frontend
-      neuroSwitchFeeToLog // Log the original NeuroSwitch fee, regardless of allowance
+      neuroSwitchFeeToLog, // Log the original NeuroSwitch fee, regardless of allowance
+      chatIdNumeric // 🆕 NEW: Pass chat_id for per-chat token tracking
     );
 
     // --- File/Image Processing ---

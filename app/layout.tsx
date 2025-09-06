@@ -4,6 +4,7 @@ import './globals.css'
 import Navigation from './components/Navigation'
 import { Inter } from "next/font/google"
 import { UserProvider } from './contexts/UserContext'
+import ChatwootWidget from './components/ChatwootWidget'
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -75,6 +76,9 @@ const RootLayout: React.FC<RootLayoutProps> = ({ children }) => {
             </main>
           </div>
         </UserProvider>
+        
+        {/* Conditional Chatwoot Widget - only shows on public pages */}
+        <ChatwootWidget />
       </body>
     </html>
   )

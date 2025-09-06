@@ -198,6 +198,61 @@ router.get('/:chatId', verifyToken, async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/chats/:chatId/tokens - Get total tokens used in this chat
+router.get('/:chatId/tokens', verifyToken, async (req: Request, res: Response) => {
+  const userId = (req.user as { id: number }).id;
+  const { chatId } = req.params;
+
+  if (!userId) {
+    return res.status(403).json({ error: 'User ID not found in token' });
+  }
+  if (!chatId || isNaN(parseInt(chatId))) {
+    return res.status(400).json({ error: 'Invalid chat ID format.' });
+  }
+
+  const numericChatId = parseInt(chatId);
+
+  try {
+    // Verify chat ownership
+    const chatCheck = await pool.query(
+      'SELECT id FROM chats WHERE id = $1 AND user_id = $2',
+      [numericChatId, userId]
+    );
+
+    if (chatCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Chat not found or access denied' });
+    }
+
+    // Get total tokens for this chat
+    const tokenResult = await pool.query(
+      `SELECT 
+         COALESCE(SUM(prompt_tokens), 0) as total_input_tokens,
+         COALESCE(SUM(completion_tokens), 0) as total_output_tokens,
+         COALESCE(SUM(total_tokens), 0) as total_tokens,
+         COUNT(*) as total_requests
+       FROM usage_logs 
+       WHERE chat_id = $1 AND user_id = $2`,
+      [numericChatId, userId]
+    );
+
+    const tokenStats = tokenResult.rows[0];
+
+    res.json({
+      chat_id: numericChatId,
+      total_tokens: parseInt(tokenStats.total_tokens) || 0,
+      total_input_tokens: parseInt(tokenStats.total_input_tokens) || 0,
+      total_output_tokens: parseInt(tokenStats.total_output_tokens) || 0,
+      total_requests: parseInt(tokenStats.total_requests) || 0,
+      is_approaching_limit: parseInt(tokenStats.total_tokens) >= 180000, // 90% of 200k
+      is_over_limit: parseInt(tokenStats.total_tokens) >= 200000
+    });
+
+  } catch (error) {
+    console.error('Error fetching chat tokens:', error);
+    res.status(500).json({ error: 'Failed to fetch chat token usage' });
+  }
+});
+
 // PUT /api/chats/:chatId - Update chat title or UI selected provider
 router.put('/:chatId', verifyToken, async (req: Request, res: Response) => {
   const userId = (req.user as { id: number }).id;

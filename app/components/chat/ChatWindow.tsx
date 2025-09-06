@@ -136,6 +136,17 @@ interface FetchedChatSession extends ChatSession {
     messages: FetchedMessage[];
 }
 
+// Define the structure for the response of GET /api/chats/:chatId/tokens
+interface ChatTokensResponse {
+  chat_id: number;
+  total_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_requests: number;
+  is_approaching_limit: boolean;
+  is_over_limit: boolean;
+}
+
 // Define a specific type for the props of the custom code component
 interface CustomCodeProps {
   node?: Element; // Made node optional to align with TS error
@@ -162,6 +173,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [loading, setLoading] = useState(false);
 
   const [tokensUsed, setTokensUsed] = useState(0);
+  const [historicalTokens, setHistoricalTokens] = useState(0);
+  const [isLoadingTokens, setIsLoadingTokens] = useState(false);
   const maxTokens = 200000;
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageData, setImageData] = useState<string | null>(null);
@@ -249,6 +262,29 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (textareaRef.current) textareaRef.current.focus(); // Focus after loading attempt
     };
 
+    // Function to load historical tokens for existing chat
+    const loadChatTokens = async (chatId: number) => {
+      setIsLoadingTokens(true);
+      try {
+        const response = await apiClient.get<ChatTokensResponse>(`/chats/${chatId}/tokens`);
+        const historical = response.data.total_tokens || 0;
+        setHistoricalTokens(historical);
+        setTokensUsed(historical); // Initialize with historical total
+        console.log(`ChatWindow: Loaded ${historical} historical tokens for chat ${chatId}`);
+        
+        // Check if over limit and log warning
+        if (response.data.is_over_limit) {
+          console.warn(`Chat ${chatId} has exceeded 200k token limit`);
+        }
+      } catch (error) {
+        console.error('Failed to load chat tokens:', error);
+        setHistoricalTokens(0);
+        setTokensUsed(0);
+      } finally {
+        setIsLoadingTokens(false);
+      }
+    };
+
     if (activeChatId === null) {
       // New chat mode: reset state
       setMessages([]);
@@ -260,14 +296,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (fileInputRef.current) fileInputRef.current.value = '';
       setNeuroStatus('');
       setTokensUsed(0);
+      setHistoricalTokens(0); // 🆕 Reset historical tokens for new chat
       setLoading(false); 
       setIsLoadingMessages(false); // Ensure this is also false
       setIsScrolledUp(false); // Reset scroll state
       console.log('ChatWindow: New chat mode activated, state reset.');
       if (textareaRef.current) textareaRef.current.focus(); // Focus for new chat
     } else {
-      // Existing chat mode: fetch messages for activeChatId
+      // Existing chat mode: fetch messages and tokens for activeChatId
       loadChatMessages(activeChatId);
+      loadChatTokens(activeChatId); // 🆕 Load historical tokens
       setIsScrolledUp(false); // Reset scroll state when loading new chat
     }
   }, [activeChatId, setSelectedModel, setNeuroStatus]); // Added dependencies from lifted state
@@ -1182,9 +1220,34 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
 
             {hasMessages && (
-              <div className="mb-2 text-xs md:text-sm text-gray-500">
-                <span>Tokens Used: {tokensUsed} / {maxTokens} ({Math.floor((tokensUsed / maxTokens) * 100)}%)</span>
-                <div className="w-full bg-gray-200 h-1.5 md:h-2 rounded"><div className="bg-blue-500 h-1.5 md:h-2 rounded" style={{ width: `${Math.min((tokensUsed / maxTokens) * 100, 100)}%` }}></div></div>
+              <div className="mb-2">
+                {/* Token limit warnings */}
+                {tokensUsed >= 200000 && (
+                  <div className="mb-2 p-2 bg-red-100 border border-red-300 rounded-md text-red-800 text-xs md:text-sm">
+                    ⚠️ This chat has exceeded the 200k token limit. Consider starting a new chat for optimal performance.
+                  </div>
+                )}
+                {tokensUsed >= 180000 && tokensUsed < 200000 && (
+                  <div className="mb-2 p-2 bg-yellow-100 border border-yellow-300 rounded-md text-yellow-800 text-xs md:text-sm">
+                    ⚠️ Approaching 200k token limit. Consider starting a new chat soon.
+                  </div>
+                )}
+                
+                {/* Token counter */}
+                <div className={`text-xs md:text-sm ${tokensUsed >= 180000 ? 'text-red-600' : 'text-gray-500'}`}>
+                  <span>Tokens Used: {tokensUsed.toLocaleString()} / {maxTokens.toLocaleString()} ({Math.floor((tokensUsed / maxTokens) * 100)}%)</span>
+                  {isLoadingTokens && <span className="ml-2 text-blue-500">(Loading...)</span>}
+                  <div className="w-full bg-gray-200 h-1.5 md:h-2 rounded">
+                    <div 
+                      className={`h-1.5 md:h-2 rounded transition-all duration-300 ${
+                        tokensUsed >= 200000 ? 'bg-red-500' : 
+                        tokensUsed >= 180000 ? 'bg-yellow-500' : 
+                        'bg-blue-500'
+                      }`} 
+                      style={{ width: `${Math.min((tokensUsed / maxTokens) * 100, 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
               </div>
             )}
 

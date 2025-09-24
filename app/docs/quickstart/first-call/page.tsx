@@ -46,9 +46,9 @@ export default function FirstCallPage() {
           </div>
           
           <pre className="text-green-400 text-sm overflow-x-auto">
-{`curl -X POST https://api.mcp4.ai/chat \\
-  -H "Authorization: Bearer sk-fusion-your-api-key-here" \\
-  -H "Content-Type: application/json" \\
+{`curl -X POST https://api.mcp4.ai/api/chat \
+  -H "Authorization: ApiKey sk-fusion-your-api-key-here" \
+  -H "Content-Type: application/json" \
   -d '{
     "prompt": "Explain quantum computing in simple terms",
     "provider": "neuroswitch",
@@ -125,10 +125,10 @@ export default function FirstCallPage() {
           </div>
           
           <pre className="text-gray-300 text-sm overflow-x-auto">
-{`const response = await fetch('https://api.mcp4.ai/chat', {
+{`const response = await fetch('https://api.mcp4.ai/api/chat', {
   method: 'POST',
   headers: {
-    'Authorization': 'Bearer sk-fusion-your-api-key-here',
+    'Authorization': 'ApiKey sk-fusion-your-api-key-here',
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
@@ -165,9 +165,9 @@ console.log('Cost:', data.cost);`}
 {`import requests
 
 response = requests.post(
-    'https://api.mcp4.ai/chat',
+    'https://api.mcp4.ai/api/chat',
     headers={
-        'Authorization': 'Bearer sk-fusion-your-api-key-here',
+        'Authorization': 'ApiKey sk-fusion-your-api-key-here',
         'Content-Type': 'application/json'
     },
     json={

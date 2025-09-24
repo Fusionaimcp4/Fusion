@@ -1,0 +1,98 @@
+// components/LandingHeroPrompt.tsx
+"use client";
+import { useState } from "react";
+import { ArrowUpRight } from "lucide-react";
+
+/**
+ * Base44-style hero prompt (centered) to showcase NeuroSwitch routing.
+ * - Stateless demo input (no history)
+ * - Wider layout, centered on page
+ * - CTA emphasizes Fusion + NeuroSwitch auto-routing
+ */
+export default function LandingHeroPrompt() {
+  const [value, setValue] = useState("");
+  const [reply, setReply] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const suggestions = [
+    "Draft a product reviwe",
+    "Write a TypeScript function ",
+    "Summarize a legal policy ",
+    "Summarize our entire chat",
+  ];
+
+  async function send() {
+    if (!value.trim() || loading) return;
+    setLoading(true);
+    setReply(null);
+    try {
+      const res = await fetch("/api/chat/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: value }),
+      });
+      const data = await res.json();
+      setReply(data?.reply ?? "");
+    } catch (e) {
+      setReply("(Demo) Server unreachable.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 pointer-events-none">
+      <div className="pointer-events-auto absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[960px] max-w-[94vw] p-2">
+        <div className="rounded-[28px] backdrop-blur-xl bg-white/75 ring-1 ring-[#E6E0F0] shadow-[0_10px_40px_rgba(0,0,0,0.08)] p-6">
+          {/* headline */}
+
+          {/* input */}
+          <div className="relative rounded-[22px] bg-white/90 p-4 ring-1 ring-[#EAE3F4] shadow-inner">
+            <div className="relative rounded-[20px] border-[2px]" style={{ borderColor: "#C6FF2E" }}>
+              <textarea
+                rows={4}
+                placeholder="Type your question… NeuroSwitch picks the right model to give you the best answer."
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), send())}
+                className="w-full resize-none rounded-[16px] bg-transparent px-4 py-3 outline-none placeholder:text-slate-400 text-slate-800"
+              />
+              <button
+                onClick={send}
+                disabled={loading}
+                className="absolute right-3 bottom-3 h-10 px-4 rounded-full flex items-center gap-2 text-white disabled:opacity-50"
+                style={{ backgroundColor: "#FF9F2E" }}
+                aria-label="Route with NeuroSwitch"
+              >
+                <span className="text-sm font-semibold">Route with NeuroSwitch</span>
+                <ArrowUpRight className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* helper + chips */}
+          <div className="px-1 mt-4 text-sm text-slate-600 text-left">Skip the guesswork: NeuroSwitch picks the right AI model for your query</div>
+          <div className="mt-2 flex flex-wrap gap-2 justify-center">
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                onClick={() => setValue(s)}
+                className="px-4 py-1.5 rounded-full bg-[#F3F0F8] text-slate-700 text-sm hover:bg-[#ECE7F4] border border-[#E4DEEF]"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {/* optional last reply preview */}
+          {reply !== null && (
+            <div className="mt-4 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <span className="font-medium text-slate-900">Preview: </span>
+              {reply || "(empty)"}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

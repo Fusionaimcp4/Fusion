@@ -29,8 +29,12 @@ if (shouldEnableSwagger) {
         },
         servers: [
           {
-            url: process.env.BACKEND_URL || 'http://localhost:5000',
-            description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server'
+            url: 'https://api.mcp4.ai',
+            description: 'Production server'
+          },
+          {
+            url: 'http://localhost:5000',
+            description: 'Development server'
           }
         ],
         components: {
@@ -39,7 +43,13 @@ if (shouldEnableSwagger) {
               type: 'http',
               scheme: 'bearer',
               bearerFormat: 'JWT',
-              description: 'JWT token obtained from login or API key with sk-fusion- prefix'
+              description: 'JWT token obtained from user login. Use this for session-based access.'
+            },
+            apiKeyAuth: {
+              type: 'apiKey',
+              in: 'header',
+              name: 'Authorization',
+              description: 'Platform API key authentication. Format: "ApiKey sk-fusion-..."'
             }
           },
           schemas: {
@@ -192,12 +202,42 @@ if (shouldEnableSwagger) {
                     },
                     output_tokens: {
                       type: 'integer'
+                    },
+                    runtime: {
+                      type: 'number',
+                      description: 'Processing runtime in milliseconds (if available)'
                     }
                   }
+                },
+                cost_charged_to_credits: {
+                  type: 'number',
+                  description: 'LLM cost charged to user credits for this request'
+                },
+                neuroswitch_fee_charged_to_credits: {
+                  type: 'number',
+                  description: 'NeuroSwitch classifier fee charged to credits (if applicable)'
                 },
                 timestamp: {
                   type: 'string',
                   format: 'date-time'
+                },
+                image_url: {
+                  type: 'string',
+                  nullable: true,
+                  description: 'URL of uploaded/generated image (if any)'
+                },
+                file_url: {
+                  type: 'string',
+                  nullable: true,
+                  description: 'URL of generated file (if any)'
+                },
+                file_name: {
+                  type: 'string',
+                  nullable: true
+                },
+                mime_type: {
+                  type: 'string',
+                  nullable: true
                 }
               }
             },
@@ -230,9 +270,8 @@ if (shouldEnableSwagger) {
           }
         },
         security: [
-          {
-            bearerAuth: []
-          }
+          { bearerAuth: [] },
+          { apiKeyAuth: [] }
         ],
         tags: [
           {

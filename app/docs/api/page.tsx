@@ -108,9 +108,16 @@ export default function APIReferencePage() {
             
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Authentication</h3>
             <div className="bg-gray-900 rounded-lg p-4">
-              <pre className="text-green-400 text-sm">
-{`Authorization: Bearer sk-fusion-your-api-key`}
-              </pre>
+              <div className="space-y-3">
+                <pre className="text-green-400 text-sm">
+{`# JWT (login sessions)
+Authorization: Bearer <jwt>`}
+                </pre>
+                <pre className="text-green-400 text-sm">
+{`# Platform API keys
+Authorization: ApiKey sk-fusion-...`}
+                </pre>
+              </div>
             </div>
           </div>
 
@@ -118,9 +125,9 @@ export default function APIReferencePage() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Example Request</h3>
             <div className="bg-gray-900 rounded-lg p-4">
               <pre className="text-green-400 text-sm overflow-x-auto">
-{`curl -X POST https://api.mcp4.ai/chat \\
-  -H "Authorization: Bearer sk-fusion-..." \\
-  -H "Content-Type: application/json" \\
+{`curl -X POST https://api.mcp4.ai/api/chat \
+  -H "Authorization: ApiKey sk-fusion-..." \
+  -H "Content-Type: application/json" \
   -d '{
     "prompt": "Hello, world!",
     "provider": "neuroswitch"
@@ -141,7 +148,7 @@ export default function APIReferencePage() {
               <h3 className="text-lg font-semibold text-gray-900">Chat Completion</h3>
               <div className="flex items-center space-x-2">
                 <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-medium">POST</span>
-                <code className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">/chat</code>
+                <code className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">/api/chat</code>
               </div>
             </div>
             

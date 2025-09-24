@@ -110,6 +110,7 @@ async function deductCreditsAndLog(userId: number, cost: number, provider: strin
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -142,17 +143,27 @@ async function deductCreditsAndLog(userId: number, cost: number, provider: strin
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ChatResponse'
- *             example:
- *               prompt: "Explain quantum computing in simple terms"
- *               response:
- *                 text: "Quantum computing is a type of computation that harnesses quantum mechanical phenomena..."
- *               provider: "openai"
- *               model: "gpt-4"
- *               tokens:
- *                 total_tokens: 150
- *                 input_tokens: 50
- *                 output_tokens: 100
- *               timestamp: "2024-01-01T12:00:00.000Z"
+ *             examples:
+ *               basic_success:
+ *                 summary: Basic success response
+ *                 value:
+ *                   prompt: "Explain quantum computing in simple terms"
+ *                   response:
+ *                     text: "Quantum computing is a type of computation that harnesses quantum mechanical phenomena..."
+ *                   provider: "openai"
+ *                   model: "gpt-4"
+ *                   tokens:
+ *                     input_tokens: 50
+ *                     output_tokens: 100
+ *                     total_tokens: 150
+ *                     runtime: 1234
+ *                   cost_charged_to_credits: 0.0012
+ *                   neuroswitch_fee_charged_to_credits: 0
+ *                   timestamp: "2024-01-01T12:00:00.000Z"
+ *                   image_url: null
+ *                   file_url: null
+ *                   file_name: null
+ *                   mime_type: null
  *       400:
  *         description: Bad request - Missing prompt or invalid parameters
  *         content:

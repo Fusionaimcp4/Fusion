@@ -67,11 +67,11 @@ Authorization: Bearer <your_jwt_token>
 
 ### Using Internal API Keys
 
-Replace JWT token with API key in the Authorization header:
+Use the ApiKey auth scheme explicitly (not Bearer):
 
 ```bash
 curl -X POST https://your-domain.com/api/chat \
-  -H "Authorization: Bearer sk-fusion-your-api-key" \
+  -H "Authorization: ApiKey sk-fusion-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Hello, world!",
@@ -184,6 +184,19 @@ curl -X POST https://your-domain.com/api/chat \
     "model": "gpt-4"
   }'
 ```
+
+### JWT vs ApiKey
+
+- JWT sessions (from login):
+  - `Authorization: Bearer <jwt>`
+- Platform API keys (sk-fusion-...):
+  - `Authorization: ApiKey <key>`
+
+### CORS and Browser Calls
+
+- Server-to-server calls (curl, Postman, n8n) are not restricted by CORS.
+- Browser-based calls from origins other than the configured `FRONTEND_URL` will be blocked by CORS.
+- Use server-side integrations when calling `/api/chat` from external sites.
 
 The system will:
 1. Look up your active OpenAI API key

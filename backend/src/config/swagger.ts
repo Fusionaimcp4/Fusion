@@ -163,6 +163,17 @@ if (shouldEnableSwagger) {
                 mode: {
                   type: 'string',
                   description: 'Chat mode (optional)'
+                },
+                tools: {
+                  type: 'array',
+                  items: {
+                    type: 'object'
+                  },
+                  description: 'Optional tool definitions to enable for this request'
+                },
+                enable_tools: {
+                  type: 'boolean',
+                  description: 'Enable automatic tool execution on NeuroSwitch (optional)'
                 }
               },
               required: ['prompt']

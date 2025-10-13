@@ -234,8 +234,8 @@ async function deductCreditsAndLog(userId: number, cost: number, provider: strin
  *                       description: Reason why providers failed
  */
 router.post('/', verifyToken, async (req: Request, res: Response) => {
-  const { prompt, provider, model: modelFromRequest, image, mode } = req.body;
-  console.log('[API Chat] Received request on /api/chat. Provider:', provider, 'Model:', modelFromRequest, 'Prompt:', prompt ? 'Exists' : 'Missing');
+  const { prompt, provider, model: modelFromRequest, image, mode, tools, enable_tools } = req.body;
+  console.log('[API Chat] Received request on /api/chat. Provider:', provider, 'Model:', modelFromRequest, 'Prompt:', prompt ? 'Exists' : 'Missing', 'Tools:', tools ? 'Provided' : 'None');
   const user = req.user as AuthUser;
   
   if (!user || typeof user.id === 'undefined') {
@@ -398,6 +398,11 @@ router.post('/', verifyToken, async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Prompt missing' });
   }
 
+  // Validate tools parameter if provided
+  if (tools !== undefined && !Array.isArray(tools)) {
+    return res.status(400).json({ error: 'tools must be an array' });
+  }
+
   interface HistoryMessage {
     role: 'user' | 'assistant';
     content: string;
@@ -437,6 +442,8 @@ if (chatIdFromHeader) { // Removed isProd condition
       user_context: { user_id: userId },
       ...(image && { image_data: image }),
       ...(mode && { chat_mode: mode }),
+      ...(tools && { tools }),
+      ...(enable_tools !== undefined && { enable_tools }),
     };
     
     // Headers for NeuroSwitch request
@@ -561,6 +568,9 @@ if (chatIdFromHeader) { // Removed isProd condition
     
     console.log('[API Chat] Sending to NeuroSwitch URL:', neuroSwitchUrl);
     console.log('[API Chat] Payload to NeuroSwitch:', JSON.stringify(payloadToNeuroSwitch, null, 2));
+    if (tools) {
+      console.log(`[API Chat] User ${userId} requested tools:`, tools);
+    }
     // console.log('[API Chat] Headers to NeuroSwitch:', neuroSwitchHeaders); // DO NOT log sensitive headers in prod
 
     const neuroRes = await axios.post<NeuroSwitchResponse>(

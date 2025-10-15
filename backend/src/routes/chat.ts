@@ -28,6 +28,30 @@ interface NeuroSwitchResponse {
   image_base64?: string;
   generated_file_content?: string;
   generated_file_name?: string;
+  // Tool calls support fields
+  response_structured?: {
+    text?: string;
+    tool_calls?: Array<{
+      id?: string;
+      name?: string;
+      function?: {
+        name?: string;
+        arguments?: any;
+      };
+      input?: any;
+      arguments?: any;
+    }>;
+  };
+  tool_calls?: Array<{
+    id?: string;
+    name?: string;
+    function?: {
+      name?: string;
+      arguments?: any;
+    };
+    input?: any;
+    arguments?: any;
+  }>;
 }
 
 const router = express.Router();
@@ -778,9 +802,35 @@ if (chatIdFromHeader) { // Removed isProd condition
     }
     // --- End File/Image Processing ---
 
-    res.json({
+    // --- Tool Calls Conversion Patch ---
+    let langchainToolCalls: any[] | undefined = undefined;
+
+    const toolCalls = data.response_structured?.tool_calls || data.tool_calls || [];
+
+    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+      try {
+        langchainToolCalls = toolCalls.map((toolCall: any, index: number) => ({
+          id: toolCall.id || `call_${Date.now()}_${index}`,
+          name: toolCall.name || toolCall.function?.name || 'unknown_tool',
+          // LangChain expects 'args', not 'input'
+          args: toolCall.input || toolCall.arguments || toolCall.function?.arguments || {},
+        }));
+
+        console.log(
+          `[Fusion ToolCalls] Converted ${langchainToolCalls.length} tool calls for model: ${neuroSwitchActualModel}`
+        );
+      } catch (err) {
+        console.error('[Fusion ToolCalls] Conversion error:', err);
+      }
+    }
+    // --- End Tool Calls Conversion Patch ---
+
+    const responsePayload = {
       prompt,
-      response: { text: data.response },
+      response: {
+        text: data.response || data.response_structured?.text || '',
+        ...(langchainToolCalls && { tool_calls: langchainToolCalls }),
+      },
       provider: neuroSwitchActualProvider,
       model: neuroSwitchActualModel,
       tokens: data.token_usage || { total_tokens: data.tokens },
@@ -792,14 +842,16 @@ if (chatIdFromHeader) { // Removed isProd condition
       original_neuroswitch_fee: neuroSwitchFeeToLog,
       timestamp: new Date().toISOString(),
       // Add tool information if provided by NeuroSwitch
-      tool_name: data.tool_name,
+      tool_name: data.tool_name || null, // Keep existing field; no conflict
       file_downloads: data.file_downloads,
       // Add processed file/image information
       image_url: processedImageUrl,
       file_url: processedFileUrl,
       file_name: processedFileName,
-      mime_type: processedMimeType
-    });
+      mime_type: processedMimeType,
+    };
+
+    res.json(responsePayload);
 
   } catch (err: any) {
     console.error('[API Chat] NeuroSwitch or internal error:', err.message);

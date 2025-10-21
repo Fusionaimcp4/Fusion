@@ -345,7 +345,7 @@ router.post('/', verifyToken, async (req: Request, res: Response) => {
   // 'pro' and 'admin' bypass this explicit pre-check.
   
   let requiresCreditPreCheck = false;
-  if (userRole === 'user') {
+  if (userRole === 'user' || userRole === 'sub_user') {
     requiresCreditPreCheck = true;
   } else if (userRole === 'tester') {
     // For testers, credit pre-check is needed if the cost of THIS transaction isn't covered by an allowance.

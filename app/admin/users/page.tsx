@@ -21,7 +21,7 @@ interface AdjustCreditsResponse {
   // Potentially other fields like user_id, message, etc.
 }
 
-const VALID_ROLES = ['admin', 'pro', 'user', 'tester'];
+const VALID_ROLES = ['admin', 'pro', 'user', 'sub_user', 'tester'];
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);

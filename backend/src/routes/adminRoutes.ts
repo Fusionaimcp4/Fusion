@@ -4,7 +4,7 @@ import { verifyToken, User } from '../middleware/auth'; // Assuming User interfa
 
 const router = express.Router();
 
-const ALLOWED_ROLES_TO_SET = ['user', 'standard', 'pro', 'admin', 'tester'];
+const ALLOWED_ROLES_TO_SET = ['user', 'standard', 'pro', 'admin', 'sub_user', 'tester'];
 
 // Endpoint to change a user's role (admin only)
 router.put('/users/:targetUserId/role', verifyToken, async (req: Request, res: Response) => {

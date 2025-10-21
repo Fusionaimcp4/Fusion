@@ -1,11 +1,115 @@
-import express, { Request } from 'express';
+import express, { Request, Response } from 'express';
 import pool from '../../db';
 import { logAdminAction } from '../../utils/adminLogger';
 import { User as AuthUser } from '../../middleware/auth'; // For req.user type
+import { requireAdminRole } from '../../middleware/adminAuth';
+import crypto from 'crypto';
 
 const router = express.Router();
 
-const VALID_ROLES = ['admin', 'pro', 'user', 'tester'];
+const VALID_ROLES = ['admin', 'pro', 'user', 'sub_user', 'tester'];
+
+// Generate new API key
+const generateNewApiKey = (): string => {
+  const prefix = 'sk-fusion-';
+  return prefix + crypto.randomBytes(28).toString('hex');
+};
+
+// POST /api/admin/users - Create new user account
+router.post('/', requireAdminRole, async (req: Request, res: Response) => {
+  const { email, display_name, role, password, is_active } = req.body;
+  const adminUser = req.user as AuthUser;
+
+  if (!adminUser || typeof adminUser.id === 'undefined') {
+    return res.status(401).json({ error: 'Admin user ID not found in token, unauthorized.' });
+  }
+  const adminUserId = adminUser.id;
+
+  // Validate required fields
+  if (!email || typeof email !== 'string' || email.trim() === '') {
+    return res.status(400).json({ error: 'Email is required and must be a non-empty string.' });
+  }
+  if (!display_name || typeof display_name !== 'string' || display_name.trim() === '') {
+    return res.status(400).json({ error: 'Display name is required and must be a non-empty string.' });
+  }
+  if (!role || typeof role !== 'string' || !VALID_ROLES.includes(role.toLowerCase())) {
+    return res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
+  }
+
+  const normalizedRole = role.toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedDisplayName = display_name.trim();
+  const userIsActive = is_active !== undefined ? Boolean(is_active) : true;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Check if email already exists
+    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
+    if (existingUser.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'User with this email already exists.' });
+    }
+
+    // Create user (password is optional for OAuth-only accounts)
+    let passwordHash = '';
+    if (password && typeof password === 'string' && password.trim() !== '') {
+      // In a real implementation, you'd hash the password here
+      // For now, we'll store it as-is (you should implement proper password hashing)
+      passwordHash = password.trim();
+    }
+
+    const userResult = await client.query(
+      `INSERT INTO users (email, display_name, role, password_hash, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+       RETURNING id, email, display_name, role, is_active, created_at`,
+      [normalizedEmail, normalizedDisplayName, normalizedRole, passwordHash, userIsActive]
+    );
+
+    const newUser = userResult.rows[0];
+
+    // Initialize user credits with 0 balance
+    await client.query(
+      'INSERT INTO user_credits (user_id, balance_cents, updated_at) VALUES ($1, 0, NOW())',
+      [newUser.id]
+    );
+
+    // Log admin action
+    const logDetails = {
+      created_user_id: newUser.id,
+      email: normalizedEmail,
+      display_name: normalizedDisplayName,
+      role: normalizedRole,
+      is_active: userIsActive,
+      has_password: passwordHash !== ''
+    };
+    await logAdminAction(adminUserId, 'USER_CREATED', 'USER', newUser.id.toString(), logDetails, `Created user account for ${normalizedEmail}`, client);
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      success: true,
+      data: {
+        id: newUser.id,
+        email: newUser.email,
+        display_name: newUser.display_name,
+        role: newUser.role,
+        is_active: newUser.is_active,
+        created_at: newUser.created_at
+      }
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[Admin API] Error creating user:', error);
+    if ((error as any).code === '23505') { // unique_violation
+      return res.status(409).json({ error: 'User with this email already exists.' });
+    }
+    res.status(500).json({ error: 'Failed to create user.' });
+  } finally {
+    client.release();
+  }
+});
 
 // GET /api/admin/users - List all users
 router.get('/', async (req, res) => {
@@ -209,6 +313,340 @@ router.post('/:userId/adjust-credits', async (req: Request<{ userId: string }>, 
     await client.query('ROLLBACK');
     console.error(`[Admin API] Error adjusting credits for user ${targetUserId}:`, error);
     res.status(500).json({ error: 'Failed to adjust user credits.' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/admin/users/:userId/api-keys - Create API key for a user
+router.post('/:userId/api-keys', requireAdminRole, async (req: Request<{ userId: string }>, res: Response) => {
+  const { userId: targetUserIdString } = req.params;
+  const { name } = req.body;
+  const adminUser = req.user as AuthUser;
+
+  if (!adminUser || typeof adminUser.id === 'undefined') {
+    return res.status(401).json({ error: 'Admin user ID not found in token, unauthorized.' });
+  }
+  const adminUserId = adminUser.id;
+
+  const targetUserId = parseInt(targetUserIdString, 10);
+  if (isNaN(targetUserId)) {
+    return res.status(400).json({ error: 'Invalid target user ID format.' });
+  }
+
+  // Validate API key name
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return res.status(400).json({ error: 'API key name is required and must be a non-empty string.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify target user exists
+    const userResult = await client.query('SELECT id, email, display_name FROM users WHERE id = $1', [targetUserId]);
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Target user not found.' });
+    }
+    const targetUser = userResult.rows[0];
+
+    // Generate new API key
+    const apiKey = generateNewApiKey();
+
+    // Insert API key
+    const apiKeyResult = await client.query(
+      'INSERT INTO api_keys (user_id, name, api_key, created_at, is_active) VALUES ($1, $2, $3, NOW(), true) RETURNING id, name, api_key, created_at, is_active',
+      [targetUserId, name.trim(), apiKey]
+    );
+
+    const newApiKey = apiKeyResult.rows[0];
+
+    // Log admin action
+    const logDetails = {
+      target_user_id: targetUserId,
+      target_user_email: targetUser.email,
+      api_key_id: newApiKey.id,
+      api_key_name: name.trim()
+    };
+    await logAdminAction(adminUserId, 'API_KEY_CREATED_FOR_USER', 'API_KEY', newApiKey.id.toString(), logDetails, `Created API key "${name.trim()}" for user ${targetUser.email}`, client);
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      success: true,
+      data: {
+        id: newApiKey.id,
+        name: newApiKey.name,
+        api_key: newApiKey.api_key, // Full key returned only once
+        created_at: newApiKey.created_at,
+        is_active: newApiKey.is_active,
+        message: "API Key created successfully. Please save this key securely. You will not be able to see it again."
+      }
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[Admin API] Error creating API key for user:', error);
+    if ((error as any).code === '23505') { // unique_violation
+      return res.status(409).json({ error: 'Failed to generate a unique API key. Please try again.' });
+    }
+    res.status(500).json({ error: 'Failed to create API key.' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/admin/users/:userId/api-keys - List user API keys (masked)
+router.get('/:userId/api-keys', requireAdminRole, async (req: Request<{ userId: string }>, res: Response) => {
+  const { userId: targetUserIdString } = req.params;
+  const adminUser = req.user as AuthUser;
+
+  if (!adminUser || typeof adminUser.id === 'undefined') {
+    return res.status(401).json({ error: 'Admin user ID not found in token, unauthorized.' });
+  }
+  const adminUserId = adminUser.id;
+
+  const targetUserId = parseInt(targetUserIdString, 10);
+  if (isNaN(targetUserId)) {
+    return res.status(400).json({ error: 'Invalid target user ID format.' });
+  }
+
+  try {
+    // Verify target user exists
+    const userResult = await pool.query('SELECT id, email, display_name FROM users WHERE id = $1', [targetUserId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Target user not found.' });
+    }
+    const targetUser = userResult.rows[0];
+
+    // Fetch user's API keys
+    const apiKeysResult = await pool.query(
+      'SELECT id, name, api_key, created_at, last_used_at, is_active FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC',
+      [targetUserId]
+    );
+
+    // Mask the API keys before sending
+    const maskedKeys = apiKeysResult.rows.map(key => ({
+      id: key.id,
+      name: key.name,
+      api_key_masked: key.api_key ? `${key.api_key.substring(0, 12)}...${key.api_key.substring(key.api_key.length - 4)}` : null,
+      created_at: key.created_at,
+      last_used_at: key.last_used_at,
+      is_active: key.is_active
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: targetUser.id,
+          email: targetUser.email,
+          display_name: targetUser.display_name
+        },
+        api_keys: maskedKeys
+      }
+    });
+
+  } catch (error) {
+    console.error('[Admin API] Error fetching user API keys:', error);
+    res.status(500).json({ error: 'Failed to fetch user API keys.' });
+  }
+});
+
+// GET /api/admin/users/:userId/usage - Get user usage metrics
+router.get('/:userId/usage', requireAdminRole, async (req: Request<{ userId: string }>, res: Response) => {
+  const { userId: targetUserIdString } = req.params;
+  const { from, to, page = '1', limit = '20', provider, model, apiKeyId } = req.query;
+  const adminUser = req.user as AuthUser;
+
+  if (!adminUser || typeof adminUser.id === 'undefined') {
+    return res.status(401).json({ error: 'Admin user ID not found in token, unauthorized.' });
+  }
+  const adminUserId = adminUser.id;
+
+  const targetUserId = parseInt(targetUserIdString, 10);
+  if (isNaN(targetUserId)) {
+    return res.status(400).json({ error: 'Invalid target user ID format.' });
+  }
+
+  try {
+    // Verify target user exists
+    const userResult = await pool.query('SELECT id, email, display_name FROM users WHERE id = $1', [targetUserId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Target user not found.' });
+    }
+    const targetUser = userResult.rows[0];
+
+    // Validate and default dates
+    const toDate = to ? new Date(to as string) : new Date();
+    const fromDate = from ? new Date(from as string) : new Date(new Date().setDate(toDate.getDate() - 30));
+
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format. Please use YYYY-MM-DD.' });
+    }
+
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    // Build query conditions
+    const queryParams: any[] = [targetUserId, fromDate, toDate];
+    let whereClause = '';
+    let paramIndex = 4;
+
+    if (provider) {
+      whereClause += ` AND ul.provider = $${paramIndex}`;
+      queryParams.push(provider as string);
+      paramIndex++;
+    }
+    if (model) {
+      whereClause += ` AND ul.model = $${paramIndex}`;
+      queryParams.push(model as string);
+      paramIndex++;
+    }
+    if (apiKeyId) {
+      whereClause += ` AND ul.api_key_id = $${paramIndex}`;
+      queryParams.push(parseInt(apiKeyId as string, 10));
+      paramIndex++;
+    }
+
+    // Fetch overall metrics
+    const metricsResult = await pool.query(
+      `SELECT
+         COALESCE(SUM(cost + neuroswitch_fee), 0) AS total_spend,
+         COALESCE(SUM(total_tokens), 0) AS total_tokens,
+         COUNT(*) AS total_requests
+       FROM usage_logs ul
+       WHERE ul.user_id = $1 AND ul.created_at >= $2 AND ul.created_at <= $3 ${whereClause}`,
+      queryParams
+    );
+
+    const metrics = {
+      spend: parseFloat(metricsResult.rows[0].total_spend) || 0,
+      tokens: parseInt(metricsResult.rows[0].total_tokens, 10) || 0,
+      requests: parseInt(metricsResult.rows[0].total_requests, 10) || 0
+    };
+
+    // Fetch activity logs with pagination
+    const activityQueryParams = [...queryParams, limitNum, offset];
+    const activityResult = await pool.query(
+      `SELECT
+         ul.id,
+         ul.created_at AS timestamp,
+         ul.provider,
+         ul.model,
+         ul.prompt_tokens,
+         ul.completion_tokens,
+         ul.total_tokens,
+         ul.cost AS llm_provider_cost,
+         ul.neuroswitch_fee,
+         ul.response_time,
+         ul.fallback_reason,
+         ul.request_model,
+         ul.api_key_id,
+         uak.name AS api_key_name
+       FROM usage_logs ul
+       LEFT JOIN api_keys uak ON ul.api_key_id = uak.id
+       WHERE ul.user_id = $1 AND ul.created_at >= $2 AND ul.created_at <= $3 ${whereClause}
+       ORDER BY ul.created_at DESC
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      activityQueryParams
+    );
+
+    // Get total count for pagination
+    const totalCountResult = await pool.query(
+      `SELECT COUNT(*) FROM usage_logs ul WHERE ul.user_id = $1 AND ul.created_at >= $2 AND ul.created_at <= $3 ${whereClause}`,
+      queryParams
+    );
+    const totalLogs = parseInt(totalCountResult.rows[0].count, 10);
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: targetUser.id,
+          email: targetUser.email,
+          display_name: targetUser.display_name
+        },
+        metrics,
+        activity: activityResult.rows,
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(totalLogs / limitNum),
+          totalLogs,
+          limit: limitNum
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('[Admin API] Error fetching user usage:', error);
+    res.status(500).json({ error: 'Failed to fetch user usage data.' });
+  }
+});
+
+// DELETE /api/admin/users/:userId - Delete a user account
+router.delete('/:userId', requireAdminRole, async (req: Request<{ userId: string }>, res: Response) => {
+  const { userId: targetUserIdString } = req.params;
+  const adminUser = req.user as AuthUser;
+
+  if (!adminUser || typeof adminUser.id === 'undefined') {
+    return res.status(401).json({ error: 'Admin user ID not found in token, unauthorized.' });
+  }
+  const adminUserId = adminUser.id;
+
+  const targetUserId = parseInt(targetUserIdString, 10);
+  if (isNaN(targetUserId)) {
+    return res.status(400).json({ error: 'Invalid target user ID format.' });
+  }
+
+  // Prevent admins from deleting themselves
+  if (targetUserId === adminUserId) {
+    return res.status(403).json({ error: 'Admins cannot delete their own account.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify target user exists and get user details
+    const userResult = await client.query('SELECT id, email, display_name, role FROM users WHERE id = $1', [targetUserId]);
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Target user not found.' });
+    }
+    const targetUser = userResult.rows[0];
+
+    // Log admin action before deletion
+    const logDetails = {
+      deleted_user_id: targetUserId,
+      email: targetUser.email,
+      display_name: targetUser.display_name,
+      role: targetUser.role
+    };
+    await logAdminAction(adminUserId, 'USER_DELETED', 'USER', targetUserId.toString(), logDetails, `Deleted user account for ${targetUser.email}`, client);
+
+    // Delete user (cascade will handle related records)
+    await client.query('DELETE FROM users WHERE id = $1', [targetUserId]);
+
+    await client.query('COMMIT');
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'User deleted successfully.',
+        deleted_user: {
+          id: targetUser.id,
+          email: targetUser.email,
+          display_name: targetUser.display_name,
+          role: targetUser.role
+        }
+      }
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[Admin API] Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user.' });
   } finally {
     client.release();
   }
